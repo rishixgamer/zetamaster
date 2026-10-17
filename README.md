@@ -34,7 +34,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 
 ## What is not finished
 
-- Original-site probability distribution and timer/UI parity require independent empirical/source audit. **Default format is implemented; exact score equivalence is not yet independently certified.**
+- Generator distribution and answer-acceptance rule were audited against the original client on 2026-10-17 ([Parity audit](docs/PARITY_AUDIT.md)). The timer cutoff and PRNG still differ, as documented there. **Individual score equivalence is not certified.**
 - Interactive heatmap UI, complete difficulty/method taxonomy, calibrated learner-model, integrated spaced repetition, and automated experiment evaluation remain to be built.
 - AI tutor, multiplayer, verified leaderboards, account sync, full quant interview curriculum and market-making simulation are planned, **not usable yet**.
 - The present arithmetic Academy teaches techniques but does not yet provide interactive step-through exercises.

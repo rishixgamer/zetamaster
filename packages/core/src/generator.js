@@ -6,7 +6,7 @@ export function makeQuestion(op, a, b, sequence = 0) {
   if (![a, b].every(Number.isSafeInteger) || a < 1 || b < 1) throw new RangeError('Operands must be positive integers');
   const result = {
     add: () => ({ left: a, right: b, answer: a + b, symbol: '+' }),
-    sub: () => ({ left: a + b, right: a, answer: b, symbol: '−' }),
+    sub: () => ({ left: a + b, right: a, answer: b, symbol: '\u2013' }),
     mul: () => ({ left: a, right: b, answer: a * b, symbol: '×' }),
     div: () => ({ left: a * b, right: a, answer: b, symbol: '÷' }),
   }[op];

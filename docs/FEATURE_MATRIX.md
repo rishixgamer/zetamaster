@@ -4,7 +4,7 @@ The 55 entries below correspond to every numbered product feature in the brainst
 
 | ID | Feature | Status | Module | Minimum acceptance criterion |
 |---|---|---|---|---|
-| F01 | Default arithmetic simulator | implemented | `core` | 120s preset and inverse operations; verify source parity in independent audit |
+| F01 | Default arithmetic simulator | implemented | `core` | 120s preset and inverse operations; parity audited against original client 2026-10-17 (docs/PARITY_AUDIT.md, tests/parity.test.js); remaining deviations: strict timer cutoff and PRNG |
 | F02 | Custom training mode | partial | `web/core` | Operation and duration selection works; extend exposed operand ranges and feedback settings |
 | F03 | Standardized benchmark mode | implemented | `core/web` | Immutable default rules; practice and early termination never count as standard |
 | F04 | Seeded tests and replay | partial | `core/web` | Deterministic generator and slow-question replay; add sequence history replays |

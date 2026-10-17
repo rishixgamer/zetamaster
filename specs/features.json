@@ -15,7 +15,7 @@
       "status": "implemented",
       "owner": "core",
       "acceptance": [
-        "120s preset and inverse operations; verify source parity in independent audit"
+        "120s preset and inverse operations; parity audited against original client 2026-10-17 (docs/PARITY_AUDIT.md, tests/parity.test.js); remaining deviations: strict timer cutoff and PRNG"
       ],
       "dependencies": [],
       "benchmarkSafe": true
