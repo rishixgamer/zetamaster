@@ -31,3 +31,12 @@ export function operationDrill(op, seconds=120) {
 }
 export function sprintRules(seconds=30) { return customRules({durationSeconds:seconds}); }
 export function enduranceRules(seconds=300) { return customRules({durationSeconds:seconds}); }
+/**
+ * Practice rules restricted to one heatmap cell. Only the cell's operation is enabled and the source
+ * operand ranges are narrowed to the cell; always a custom (non-benchmark) ruleset.
+ */
+export function cellDrill(op, { rowRange, colRange }, seconds=60) {
+  const ranges = { left:[...rowRange], right:[...colRange] };
+  const base = { enabled:[op], durationSeconds:seconds, label:'Heatmap drill' };
+  return op==='add'||op==='sub' ? customRules({ ...base, addition:ranges }) : customRules({ ...base, multiplication:ranges });
+}

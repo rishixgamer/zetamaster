@@ -26,6 +26,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 - Browser-playable **120-second, four-operation default-format** arithmetic game with auto-submit on correct answers.
 - Custom single/multi-operation sessions, operation isolation, 30-second sprints, 300-second endurance, custom duration, deterministic seeds, slowest-question replay.
 - Timed question records, first-keystroke timing proxy, corrections, slip/calculation-error typology, bounded input traces, tab-visibility integrity flags ([Telemetry](docs/TELEMETRY.md)), operation tags, medians, P90 latency and slow-question review.
+- Interactive, keyboard-accessible weakness heatmaps per operation, with sample counts, median CIs, a benchmark-only scope, deep links, and one-click 60 s cell drills that are always saved as practice.
 - Local saved session history; separate standard and practice runs; rolling benchmark median, personal best and consistent-70 goal check.
 - Initial adaptive operation weighting, basic diagnostics, personalized 15-minute daily plan, and 12 deterministic arithmetic lesson cards.
 - IndexedDB-first session storage with localStorage fallback, downloadable JSON/CSV, JSON import, and opt-in local history deletion.
@@ -35,7 +36,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 ## What is not finished
 
 - Generator distribution and answer-acceptance rule were audited against the original client on 2026-10-17 ([Parity audit](docs/PARITY_AUDIT.md)). The timer cutoff and PRNG still differ, as documented there. **Individual score equivalence is not certified.**
-- Interactive heatmap UI, complete difficulty/method taxonomy, calibrated learner-model, integrated spaced repetition, and automated experiment evaluation remain to be built.
+- Complete difficulty/method taxonomy, calibrated learner-model, integrated spaced repetition, and automated experiment evaluation remain to be built.
 - AI tutor, multiplayer, verified leaderboards, account sync, full quant interview curriculum and market-making simulation are planned, **not usable yet**.
 - The present arithmetic Academy teaches techniques but does not yet provide interactive step-through exercises.
 

@@ -22,7 +22,7 @@ export function isAnswerPrefix(value, answer) { return String(answer).startsWith
  * - firstInputMs: time to first keystroke — a proxy, not exact thinking time.
  */
 export class ArithmeticSession {
-  constructor({ rules, generator, clock = () => performance.now(), wallClock = () => new Date().toISOString(), mode = 'benchmark', seed = '', captureTrace = true }) {
+  constructor({ rules, generator, clock = () => performance.now(), wallClock = () => new Date().toISOString(), mode = 'benchmark', seed = '', captureTrace = true, drill = null }) {
     this.rules = rules;
     this.generator = generator;
     this.clock = clock;
@@ -30,6 +30,7 @@ export class ArithmeticSession {
     this.mode = mode;
     this.seed = seed;
     this.captureTrace = captureTrace;
+    this.drill = drill;
     this.state = 'ready';
     this.events = [];
     this.score = 0;
@@ -114,6 +115,7 @@ export class ArithmeticSession {
       rules: this.rules, engineVersion: ENGINE_VERSION, endedEarly: !fullDuration,
       benchmark: this.mode === 'benchmark' && benchmarkEquivalent(this.rules) && fullDuration,
       score: this.score, elapsedMs, events: this.events, finalUnanswered, integrity: { ...this.integrity },
+      ...(this.drill ? { drill: this.drill } : {}),
     };
     return this.result;
   }

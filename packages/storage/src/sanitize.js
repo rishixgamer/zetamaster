@@ -40,5 +40,6 @@ export function sanitizeImportedSession(s) {
     endedEarly: s.endedEarly === true, benchmark, imported: true,
     score: Math.max(0, Math.trunc(s.score)), elapsedMs, events,
     finalUnanswered: null,
+    ...(s.drill && typeof s.drill === 'object' ? { drill: { cell: safeText(s.drill.cell, 40), op: OPERATIONS.includes(s.drill.op) ? s.drill.op : null } } : {}),
   };
 }

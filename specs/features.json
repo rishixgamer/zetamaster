@@ -108,10 +108,10 @@
       "id": "F09",
       "area": "Analytics",
       "title": "Arithmetic heatmaps",
-      "status": "partial",
+      "status": "implemented",
       "owner": "analytics/web",
       "acceptance": [
-        "Heatmap aggregation works; create accessible interactive grid UI"
+        "Accessible interactive heatmap grid per operation with keyboard navigation, sample counts, median latencies, CI, benchmark-only scope, deep links and cell drills"
       ],
       "dependencies": [],
       "benchmarkSafe": true
@@ -183,7 +183,7 @@
       "status": "partial",
       "owner": "analytics",
       "acceptance": [
-        "Smooth sparse sample summaries; add confidence intervals and uncertainty visualization"
+        "Shrinkage plus distribution-free median CIs on heatmap cells; extend uncertainty display to operation summaries and score trends"
       ],
       "dependencies": [],
       "benchmarkSafe": true

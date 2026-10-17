@@ -5,7 +5,9 @@ import { sessionStats, operationSummary } from '../../../packages/analytics/src/
 import { benchmarkProgress } from '../../../packages/analytics/src/progress.js';
 import { diagnose } from '../../../packages/analytics/src/diagnostics.js';
 import { errorTypology } from '../../../packages/analytics/src/errors.js';
-import { chooseAdaptive, operationDrill, sprintRules, enduranceRules } from '../../../packages/training/src/drills.js';
+import { buildHeatmap, slowestCells, MIN_CELL_SAMPLES } from '../../../packages/analytics/src/heatmap.js';
+import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, cellDrill } from '../../../packages/training/src/drills.js';
+import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { LESSONS } from '../../../packages/curriculum/src/lessons.js';
 import { suggestLesson } from '../../../packages/curriculum/src/explanations.js';
@@ -25,6 +27,8 @@ let tick=null;
 const MAX_FIELD=24;
 let currentMode='benchmark';
 let currentReplay=null;
+let currentDrill=null;
+const heatmapState={op:'mul',scope:'benchmark',focus:{row:0,col:0},selected:null};
 let currentSeed='';
 let lastResult=null;
 
@@ -58,9 +62,9 @@ function updateMode() {
   $('#duration').value={benchmark:'120',sprint:'30',endurance:'300'}[mode]||$('#duration').value;
   $$('#ops input').forEach(x=>x.disabled=!['custom','isolation'].includes(mode));
 }
-function startGame({ replay=null }={}) {
+function startGame({ replay=null, drill=null }={}) {
   if(currentSession?.state==='active')return;
-  const mode=replay?'replay':$('#mode').value;
+  const mode=drill?'drill':replay?'replay':$('#mode').value;
   let rules, weights=null, generator=null;
   const seconds=Number($('#duration').value);
   const selected=getOps();
@@ -72,6 +76,7 @@ function startGame({ replay=null }={}) {
     else if(mode==='sprint')rules=sprintRules(30);
     else if(mode==='endurance')rules=enduranceRules(300);
     else if(mode==='replay')rules=customRules({durationSeconds:120});
+    else if(mode==='drill')rules=cellDrill(drill.op,drill,60);
   } catch(error){alert(error.message);return;}
   currentSeed=$('#seed').value.trim() || crypto.randomUUID();
   if(replay) {
@@ -80,11 +85,11 @@ function startGame({ replay=null }={}) {
     let cursor=0;
     generator=()=>{const q=items[cursor%items.length];cursor++;return {...q,id:`replay-${cursor}`,sequence:cursor};};
   } else generator=createGenerator(rules,currentSeed,weights);
-  currentMode=mode; currentReplay=replay;
-  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed});
+  currentMode=mode; currentReplay=replay; currentDrill=drill;
+  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.key,label:drill.label}:null});
   currentSession.start();
   $('#idle-layout').classList.add('hidden');$('#top-metrics').classList.add('hidden');$('#results').classList.add('hidden');$('#game').classList.remove('hidden');
-  $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':`${mode.toUpperCase()} PRACTICE`;
+  $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':mode==='drill'?`DRILL · ${drill.label} · PRACTICE`:`${mode.toUpperCase()} PRACTICE`;
   $('#game-score').innerHTML='0 <small>correct</small>';
   $('#answer').value='';
   updateQuestion(); renderTick(); clearInterval(tick); tick=setInterval(renderTick,60);
@@ -142,12 +147,14 @@ function renderAnalytics(){
   const chart=p.trajectory.slice(-20);
   $('#analytics-root').innerHTML=`
     <div class="stat-grid"><div class="metric"><span>BEST BENCHMARK</span><strong>${p.personalBest??'—'}</strong></div><div class="metric"><span>RECENT MEDIAN</span><strong>${p.recentMedian??'—'}</strong></div><div class="metric"><span>70+ MASTERY</span><strong>${p.mastery70?'YES':'NOT YET'}</strong></div></div>
+    <section class="panel" id="heatmap-root" aria-labelledby="heatmap-title"></section>
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Time by operation</h2><div class="breakdown">${ops.map(o=>`<div class="breakdown-row"><span>${opNames[o.op]}</span><div class="bar"><div style="width:${Math.max(0,(o.medianMs??0)/maxTime*100)}%"></div></div><span>${fmt(o.medianMs)} <span class="muted">(${o.count})</span></span></div>`).join('')}</div><p class="secondary">Median per correctly solved problem. Lower is faster. Small samples may be unreliable.</p></div>
     <div class="panel"><h2 class="section-title">Recent benchmark scores</h2>${chart.length?`<div class="sparkline" role="img" aria-label="Recent benchmark scores">${chart.map(x=>`<div title="${x.score} correct" style="height:${Math.min(100,Math.max(3,x.score/90*100))}%"></div>`).join('')}</div><p class="small muted">Last ${chart.length} standard runs · Personal best ${p.personalBest}</p>`:'<div class="empty">Complete a standard benchmark to start your chart.</div>'}</div></div>
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Current bottlenecks</h2>${worst.length?worst.map(w=>`<p class="secondary"><strong>${opNames[w.key]}</strong> · ${fmt(w.rawMedianMs)} median · ${w.count} observations</p>`).join(''):'<p class="secondary">More solved questions needed before identifying reliable weaknesses.</p>'}<p class="small muted">Heuristic, sample-size-smoothed estimates; not a validated cognitive assessment.</p></div>
     <div class="panel"><h2 class="section-title">Slowest questions</h2>${allEvents.length?[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5).map(q=>`<div class="history-row"><span>${esc(`${q.left} ${q.symbol} ${q.right} = ${q.answer}`)}</span><strong>${fmt(q.responseMs)}</strong><span>${esc(q.op)}</span></div>`).join(''):'<div class="empty">No solved questions yet.</div>'}<button type="button" class="secondary-btn" id="replay-slow" ${allEvents.length?'':'disabled'}>Replay slowest five →</button></div></div>
     <div class="panel"><h2 class="section-title">Recent sessions</h2>${recent.length?recent.map(s=>`<div class="history-row"><span>${esc(new Date(s.startedAt).toLocaleString())} · ${esc(s.mode)}${s.benchmark?' · verified':''}</span><strong>${esc(s.score)}</strong><span>${s.benchmark?'Standard':'Practice'}</span></div>`).join(''):'<div class="empty">Your first session will appear here.</div>'}</div>
     <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" accept="application/json" hidden></div><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
+  renderHeatmap();
   $('#replay-slow').addEventListener('click',()=>{
     const slow=[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5);
     if(!slow.length)return;
@@ -164,6 +171,79 @@ function renderAnalytics(){
   $('#clear-history').addEventListener('click',async()=>{
     if(confirm('Permanently delete all ZetaMaster session history on this device?')){await deleteAllSessions();await refresh();}
   });
+}
+const OP_GLYPH={add:'+',sub:'–',mul:'×',div:'÷'};
+function cellColor(c){
+  if(c.count<MIN_CELL_SAMPLES||c.ratio===null)return 'transparent';
+  const strength=Math.min(1,Math.abs(Math.log2(c.ratio))/1.2);
+  return c.ratio>=1?`rgba(251,140,120,${(0.12+0.6*strength).toFixed(2)})`:`rgba(110,231,183,${(0.1+0.45*strength).toFixed(2)})`;
+}
+function cellAria(c,h){
+  if(!c.count)return `${c.label}: no observations`;
+  const rel=c.ratio===null?'':` ${Math.round(Math.abs(c.ratio-1)*100)}% ${c.ratio>=1?'slower':'faster'} than your ${opNames[h.op].toLowerCase()} median after smoothing.`;
+  return `${c.label}: ${c.count} solved, median ${fmt(c.medianMs)}.${c.count<MIN_CELL_SAMPLES?' Too few samples.':rel}`;
+}
+function cellDetailHtml(c,h){
+  if(!c)return '<p class="secondary">Select a cell (arrow keys + Enter, or click) to see details and start a drill.</p>';
+  const ci=c.ci?`${fmt(c.ci.low)} – ${fmt(c.ci.high)}`:`needs ≥6 samples (has ${c.count})`;
+  const rel=c.ratio===null||c.count<MIN_CELL_SAMPLES?'—':`${c.ratio>=1?'+':'−'}${Math.round(Math.abs(c.ratio-1)*100)}% vs ${opNames[h.op].toLowerCase()} median (${fmt(h.opMedianMs)})`;
+  return `<h3 class="cell-title">${esc(c.label)}</h3>
+    <dl class="cell-stats"><dt>Solved</dt><dd>${c.count} <span class="muted">(${esc(c.evidence)})</span></dd><dt>Median</dt><dd>${fmt(c.medianMs)}</dd><dt>95% CI of median</dt><dd>${ci}</dd><dt>Smoothed relative speed</dt><dd>${rel}</dd><dt>Not clean entry</dt><dd>${c.flawedShare===null?'—':Math.round(100*c.flawedShare)+'%'}</dd></dl>
+    <button type="button" class="primary-btn" id="drill-cell">Drill ${esc(c.label)} · 60s practice ↗</button>
+    <p class="small muted">Drills only show problems from this cell and are saved as practice. They never count toward benchmark scores, and they're excluded from the benchmark-only heatmap.</p>`;
+}
+function renderHeatmap(){
+  const root=$('#heatmap-root'); if(!root)return;
+  const h=buildHeatmap(sessions,heatmapState.op,{scope:heatmapState.scope});
+  const inGrid=pos=>pos&&pos.row<h.rows.length&&pos.col<h.cols.length;
+  if(!inGrid(heatmapState.focus))heatmapState.focus={row:0,col:0};
+  if(heatmapState.selected&&!inGrid(heatmapState.selected))heatmapState.selected=null;
+  const {row:fr,col:fc}=heatmapState.focus;
+  const sel=heatmapState.selected;
+  const selectedCell=sel?h.cells[sel.row]?.[sel.col]:null;
+  const slow=slowestCells(h);
+  const otherScopeCount=buildHeatmap(sessions,heatmapState.op,{scope:heatmapState.scope==='benchmark'?'all':'benchmark'}).observations;
+  root.innerHTML=`<div class="section-header"><div><div class="eyebrow">WEAKNESS MAP</div><h2 class="section-title" id="heatmap-title">${opNames[h.op]} heatmap</h2></div>
+    <div class="heatmap-controls"><div class="segmented" role="radiogroup" aria-label="Operation">${['add','sub','mul','div'].map(op=>`<button type="button" role="radio" aria-checked="${op===h.op}" data-hm-op="${op}" class="chip${op===h.op?' selected':''}">${OP_GLYPH[op]} ${opNames[op]}</button>`).join('')}</div>
+    <label class="field inline"><span>DATA</span><select id="hm-scope"><option value="benchmark"${h.scope==='benchmark'?' selected':''}>Standard benchmarks only</option><option value="all"${h.scope==='all'?' selected':''}>All sessions (incl. drills)</option></select></label></div></div>
+    <p class="secondary">${h.observations?`${h.observations} solved ${opNames[h.op].toLowerCase()} problems · operation median ${fmt(h.opMedianMs)}.`:`No solved ${opNames[h.op].toLowerCase()} problems in this scope yet.${otherScopeCount?` ${otherScopeCount} in the other data scope.`:''}`} Cells show median seconds and sample count. Warm = slower than your usual, cool = faster. Cells with fewer than ${MIN_CELL_SAMPLES} samples stay blank.</p>
+    ${slow.length?`<p class="small">Slowest reliable cells: ${slow.map(c=>`<button type="button" class="link-btn" data-hm-jump="${c.row}:${c.col}">${esc(c.label)}</button>`).join(', ')}</p>`:''}
+    <div class="heatmap-layout"><div class="heatmap-scroll"><table class="heatmap" role="grid" aria-labelledby="heatmap-title" aria-describedby="heatmap-help">
+      <thead><tr><th scope="col" class="corner"><span class="sr-only">${esc(h.rowAxis)} by ${esc(h.colAxis)}</span><span aria-hidden="true">${esc(h.rowAxis)} ↓ · ${esc(h.colAxis)} →</span></th>${h.cols.map(c=>`<th scope="col">${esc(c.label)}</th>`).join('')}</tr></thead>
+      <tbody>${h.cells.map((row,r)=>`<tr><th scope="row">${esc(h.rows[r].label)}</th>${row.map(c=>`<td role="gridcell" tabindex="${r===fr&&c.col===fc?0:-1}" data-row="${r}" data-col="${c.col}" aria-selected="${sel?.row===r&&sel?.col===c.col}" aria-label="${esc(cellAria(c,h))}" class="hm-cell ${c.evidence}${sel?.row===r&&sel?.col===c.col?' is-selected':''}" style="background:${cellColor(c)}">${c.count>=MIN_CELL_SAMPLES?`<span class="hm-val">${(c.medianMs/1000).toFixed(1)}</span><span class="hm-n">${c.count}</span>`:c.count?`<span class="hm-n">${c.count}</span>`:''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      <aside class="heatmap-detail" aria-live="polite">${cellDetailHtml(selectedCell,h)}</aside></div>
+    <p class="small muted" id="heatmap-help">Keyboard: arrow keys move, Home/End jump to row edges, Enter or Space selects. Medians are descriptive. Intervals assume independent attempts, which repeated practice violates, so read them as rough.</p>`;
+  root.querySelectorAll('[data-hm-op]').forEach(b=>b.addEventListener('click',()=>{heatmapState.op=b.dataset.hmOp;heatmapState.selected=null;heatmapState.focus={row:0,col:0};syncHeatmapHash();renderHeatmap();}));
+  $('#hm-scope').addEventListener('change',e=>{heatmapState.scope=e.target.value;syncHeatmapHash();renderHeatmap();});
+  root.querySelectorAll('[data-hm-jump]').forEach(b=>b.addEventListener('click',()=>{const [r,c]=b.dataset.hmJump.split(':').map(Number);selectCell(r,c,true);}));
+  const grid=root.querySelector('.heatmap');
+  grid.addEventListener('click',e=>{const td=e.target.closest('td[data-row]');if(td)selectCell(Number(td.dataset.row),Number(td.dataset.col),true);});
+  grid.addEventListener('keydown',e=>{
+    const td=e.target.closest('td[data-row]');if(!td)return;
+    const pos={row:Number(td.dataset.row),col:Number(td.dataset.col)};
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();selectCell(pos.row,pos.col,true);return;}
+    const next=nextGridPosition(pos,e.key,h.rows.length,h.cols.length,{ctrl:e.ctrlKey||e.metaKey});
+    if(!next)return;
+    e.preventDefault();
+    grid.querySelectorAll('td[tabindex="0"]').forEach(x=>x.tabIndex=-1);
+    const target=grid.querySelector(`td[data-row="${next.row}"][data-col="${next.col}"]`);
+    target.tabIndex=0;target.focus();heatmapState.focus=next;
+  });
+  $('#drill-cell')?.addEventListener('click',()=>{
+    setView('train');showIdle();
+    startGame({drill:{op:h.op,key:selectedCell.key,label:selectedCell.label,rowRange:selectedCell.rowRange,colRange:selectedCell.colRange}});
+  });
+}
+function selectCell(row,col,focus){
+  heatmapState.selected={row,col};heatmapState.focus={row,col};syncHeatmapHash();renderHeatmap();
+  if(focus)$(`#heatmap-root td[data-row="${row}"][data-col="${col}"]`)?.focus();
+}
+function syncHeatmapHash(){history.replaceState(null,'',heatmapHash(heatmapState.op,heatmapState.scope,heatmapState.selected));}
+function applyHeatmapHash(){
+  const parsed=parseHeatmapHash(location.hash); if(!parsed)return false;
+  heatmapState.op=parsed.op;heatmapState.scope=parsed.scope;
+  heatmapState.selected=parsed.cell;heatmapState.focus=parsed.cell??{row:0,col:0};
+  setView('analytics');return true;
 }
 function renderLessons(filter='all') {
   const list=filter==='all'?LESSONS:LESSONS.filter(l=>l.operation===filter);
@@ -188,9 +268,9 @@ function bind(){
   $('#answer').addEventListener('keydown',e=>{if(e.key==='Enter'&&currentSession?.state==='active'){currentSession.markWrongSubmission();e.preventDefault();}});
   document.addEventListener('visibilitychange',()=>{currentSession?.recordVisibility(document.hidden);if(!document.hidden)renderTick();});
   $('#finish').addEventListener('click',()=>finishGame(true));
-  $('#again').addEventListener('click',()=>{showIdle();startGame({replay:currentReplay});});
+  $('#again').addEventListener('click',()=>{showIdle();startGame({replay:currentReplay,drill:currentDrill});});
   $('#analyze-result').addEventListener('click',()=>{showIdle();setView('analytics');});
   $$('#lesson-filters button').forEach(button=>button.addEventListener('click',()=>{$$('#lesson-filters button').forEach(b=>b.classList.toggle('selected',b===button));renderLessons(button.dataset.op);}));
 }
-bind();updateMode();renderLessons();renderRoadmap();refresh().catch(error=>console.error('History loading failed',error));
+bind();updateMode();renderLessons();renderRoadmap();applyHeatmapHash();refresh().catch(error=>console.error('History loading failed',error));
 if('serviceWorker' in navigator && location.protocol!=='file:')navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(error=>console.warn('Offline registration unavailable',error));
