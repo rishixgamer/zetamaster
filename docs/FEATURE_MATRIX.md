@@ -16,7 +16,7 @@ The 55 entries below correspond to every numbered product feature in the brainst
 | F10 | Difficulty classification | partial | `core` | Multiple classification tags; validate taxonomy and extend harder patterns |
 | F11 | Speed accuracy analysis | partial | `analytics/web` | Entry-quality typology (clean/revision/slip/calculation) on results; add latency-stratified analytics view across sessions |
 | F12 | Performance timeline | implemented | `analytics/web` | Benchmark-only trajectory, recent median, personal best |
-| F13 | Fatigue analysis | planned | `analytics` | Chart latency across session time and account for operation mix |
+| F13 | Fatigue analysis | implemented | `analytics` | Operation-adjusted relative time by quarter of the run with CIs, plus paired second-half vs first-half shift across standard runs (docs/FATIGUE.md) |
 | F14 | Question replay | implemented | `web/core` | Replay slowest five attempts with original operands outside benchmark |
 | F15 | Statistical confidence | implemented | `analytics` | Shrinkage and distribution-free median CIs on heatmap cells, operation summaries and recent scores; Sen trend interval; percentile band visualization; sample-size gates throughout |
 | F16 | Automatic bottleneck identification | partial | `analytics` | Operation and tag weaknesses from historical event stream with sample warnings |
@@ -44,7 +44,7 @@ The 55 entries below correspond to every numbered product feature in the brainst
 | F38 | Progress-based recommendations | partial | `training/web` | Weakest operation recommendation works; link to evidence and specific actions |
 | F39 | Keystroke analysis | implemented | `core/analytics` | First-input proxy, corrections, wrong prefixes and bounded per-question input traces (captureTrace flag); no UI toggle yet |
 | F40 | Hardware calibration | partial | `core/web` | Baseline computation exists; add independent number-copying interface |
-| F41 | Response-time distribution modeling | partial | `analytics` | Median and P90 exist; add tail/outlier analysis and adjusted distributions |
+| F41 | Response-time distribution modeling | partial | `analytics` | Robust slow-question cutoff, slow share, time lost per run, per-operation p50/p90 and costliest stalls exist; add an adjusted-distribution histogram view |
 | F42 | Arithmetic strategy experiments | partial | `training` | Seeded A/B assignment exists; add balanced items and outcome testing |
 | F43 | Performance consistency scoring | implemented | `analytics` | 8-of-10 70+ goal with progress, 8th-best gap, minimum runs-to-goal, rolling median and 10th-90th band chart, Theil-Sen trend; standard benchmarks only (docs/CONSISTENCY.md) |
 | F44 | Ranking system | planned | `community` | Sustained verified benchmark ranks separated from practice ranks |

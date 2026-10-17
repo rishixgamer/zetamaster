@@ -156,10 +156,10 @@
       "id": "F13",
       "area": "Analytics",
       "title": "Fatigue analysis",
-      "status": "planned",
+      "status": "implemented",
       "owner": "analytics",
       "acceptance": [
-        "Chart latency across session time and account for operation mix"
+        "Operation-adjusted relative time by quarter of the run with CIs, plus paired second-half vs first-half shift across standard runs (docs/FATIGUE.md)"
       ],
       "dependencies": [],
       "benchmarkSafe": true
@@ -495,7 +495,7 @@
       "status": "partial",
       "owner": "analytics",
       "acceptance": [
-        "Median and P90 exist; add tail/outlier analysis and adjusted distributions"
+        "Robust slow-question cutoff, slow share, time lost per run, per-operation p50/p90 and costliest stalls exist; add an adjusted-distribution histogram view"
       ],
       "dependencies": [],
       "benchmarkSafe": true

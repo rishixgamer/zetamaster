@@ -6,6 +6,7 @@ import { benchmarkProgress } from '../../../packages/analytics/src/progress.js';
 import { diagnose } from '../../../packages/analytics/src/diagnostics.js';
 import { errorTypology } from '../../../packages/analytics/src/errors.js';
 import { consistencySummary } from '../../../packages/analytics/src/consistency.js';
+import { paceProfile, tailProfile } from '../../../packages/analytics/src/fatigue.js';
 import { buildHeatmap, slowestCells, MIN_CELL_SAMPLES } from '../../../packages/analytics/src/heatmap.js';
 import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, cellDrill } from '../../../packages/training/src/drills.js';
 import { scoreChartSvg, chartLayout, nearestIndex, CHART } from './score-chart.js';
@@ -148,6 +149,7 @@ function renderAnalytics(){
   const maxTime=Math.max(5000,...ops.map(x=>x.medianMs??0));
   $('#analytics-root').innerHTML=`
     <section class="panel" id="consistency-root" aria-labelledby="consistency-title"></section>
+    <section class="panel" id="pace-root" aria-labelledby="pace-title"></section>
     <section class="panel" id="heatmap-root" aria-labelledby="heatmap-title"></section>
     <div class="panel"><h2 class="section-title">Time by operation</h2><div class="breakdown">${ops.map(o=>`<div class="breakdown-row"><span>${opNames[o.op]}</span><div class="bar"><div style="width:${Math.max(0,(o.medianMs??0)/maxTime*100)}%"></div></div><span>${fmt(o.medianMs)} <span class="muted">(${o.count}${o.ci?` · CI ${fmt(o.ci.low)}–${fmt(o.ci.high)}`:''})</span></span></div>`).join('')}</div><p class="secondary">Median per correctly solved problem across all sessions, with sample count and a 95% CI of the median once there are 6 or more. Lower is faster. Practice sessions included.</p></div>
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Current bottlenecks</h2>${worst.length?worst.map(w=>`<p class="secondary"><strong>${opNames[w.key]}</strong> · ${fmt(w.rawMedianMs)} median · ${w.count} observations</p>`).join(''):'<p class="secondary">More solved questions needed before identifying reliable weaknesses.</p>'}<p class="small muted">Heuristic, sample-size-smoothed estimates; not a validated cognitive assessment.</p></div>
@@ -155,6 +157,7 @@ function renderAnalytics(){
     <div class="panel"><h2 class="section-title">Recent sessions</h2>${recent.length?recent.map(s=>`<div class="history-row"><span>${esc(new Date(s.startedAt).toLocaleString())} · ${esc(s.mode)}${s.benchmark?' · verified':''}</span><strong>${esc(s.score)}</strong><span>${s.benchmark?'Standard':'Practice'}</span></div>`).join(''):'<div class="empty">Your first session will appear here.</div>'}</div>
     <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" accept="application/json" hidden></div><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
   renderConsistency();
+  renderPace();
   renderHeatmap();
   $('#replay-slow').addEventListener('click',()=>{
     const slow=[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5);
@@ -222,6 +225,34 @@ function renderConsistency(){
     const next={ArrowLeft:cur-1,ArrowRight:cur+1,Home:0,End:n-1}[e.key];
     if(next===undefined)return; e.preventDefault(); show(Math.max(0,Math.min(n-1,next)));
   });
+}
+const pct=r=>`${r>=1?'+':'−'}${Math.round(Math.abs(r-1)*100)}%`;
+const FOREST=[0.6,1.6];
+const forestPos=r=>(100*(Math.log(Math.min(FOREST[1],Math.max(FOREST[0],r)))-Math.log(FOREST[0]))/(Math.log(FOREST[1])-Math.log(FOREST[0]))).toFixed(2);
+function renderPace(){
+  const root=$('#pace-root'); if(!root)return;
+  const pace=paceProfile(sessions), tail=tailProfile(sessions), h=pace.halfShift;
+  const tile=(label,value,note)=>`<div class="metric"><span>${label}</span><strong>${value}</strong><small class="tile-note">${note}</small></div>`;
+  const head=`<div class="section-header"><div><div class="eyebrow">PACE · STANDARD BENCHMARKS ONLY</div><h2 class="section-title" id="pace-title">Pace through the run &amp; slow questions</h2></div></div>`;
+  if(pace.runs<3||!pace.observations){root.innerHTML=`${head}<p class="secondary">Needs at least 3 standard benchmarks (you have ${pace.runs}). Each solve time is compared with your typical time for that operation, so a run that happened to get harder problems late doesn't look like fatigue.</p>`;return;}
+  const segLabel=s=>`${Math.round(s.fromFrac*120)}–${Math.round(s.toFrac*120)} s`;
+  root.innerHTML=`${head}
+    <div class="stat-grid consistency-tiles pace-tiles">
+      ${tile('2ND HALF VS 1ST',h.ratio===null?'—':pct(h.ratio),h.ratio===null?`Needs 3 runs with ≥3 solves per half (has ${h.runs})`:h.ci?`95% CI ${pct(h.ci.low)} to ${pct(h.ci.high)} · ${h.runs} runs · + means slower`:`${h.runs} runs · CI needs ≥6`)}
+      ${tile('SLOW QUESTIONS',tail.slowShare===null?'—':`${(100*tail.slowShare).toFixed(1)}%`,tail.cutoffRatio?`of solves took over ${tail.cutoffRatio.toFixed(1)}× your typical time for that operation`:'')}
+      ${tile('TIME LOST / RUN',tail.excessPerRun===null?'—':fmt(tail.excessPerRun),tail.questionsPerRun===null?'':`≈ ${tail.questionsPerRun.toFixed(1)} questions at your median pace (rough upper bound)`)}
+    </div>
+    <h3 class="subhead">Relative solve time by part of the run</h3>
+    <div class="forest" role="table" aria-label="Median solve time relative to your typical time for the operation, by part of the run">
+      <div class="forest-row forest-axis" role="row" aria-hidden="true"><span></span><div class="forest-track">${[0.75,1,1.25,1.5].map(v=>`<span class="forest-tick" style="left:${forestPos(v)}%">×${v}</span>`).join('')}</div><span></span></div>
+      ${pace.segments.map(sg=>`<div class="forest-row" role="row"><span role="rowheader">${segLabel(sg)}</span><div class="forest-track" role="cell" aria-label="${sg.ratio===null?'no data':`×${sg.ratio.toFixed(2)}${sg.ci?`, 95% CI ×${sg.ci.low.toFixed(2)} to ×${sg.ci.high.toFixed(2)}`:''}`}"><i class="forest-ref" style="left:${forestPos(1)}%"></i>${sg.ci?`<i class="forest-ci" style="left:${forestPos(sg.ci.low)}%;width:${(forestPos(sg.ci.high)-forestPos(sg.ci.low)).toFixed(2)}%"></i>`:''}${sg.ratio===null?'':`<i class="forest-dot" style="left:${forestPos(sg.ratio)}%"></i>`}</div><span role="cell" class="forest-val">${sg.ratio===null?'—':`×${sg.ratio.toFixed(2)}`} <span class="muted">· ${sg.n} solves · ${fmt(sg.rawMedianMs)} raw</span></span></div>`).join('')}
+    </div>
+    <p class="small muted">×1.00 = your typical time for that operation. Dots are medians and bars are 95% intervals. Two caveats: the question left unsolved at the buzzer isn't counted, which can make the last part look slightly faster, and the first segment includes getting started.</p>
+    <div class="analysis-grid pace-grid">
+      <div><h3 class="subhead">Tail by operation</h3><table class="mini-table"><thead><tr><th scope="col">Operation</th><th scope="col">Median</th><th scope="col">90th pct.</th><th scope="col">90th ÷ median</th><th scope="col">Slow</th></tr></thead><tbody>${tail.byOp.map(o=>`<tr><th scope="row">${opNames[o.op]}</th><td>${fmt(o.p50)}</td><td>${fmt(o.p90)}</td><td>×${o.tailRatio.toFixed(2)}</td><td>${o.slow} <span class="muted">/ ${o.n}</span></td></tr>`).join('')}</tbody></table></div>
+      <div><h3 class="subhead">Costliest stalls</h3>${tail.worst.length?`<table class="mini-table"><thead><tr><th scope="col">Problem</th><th scope="col">Took</th><th scope="col">Typical</th><th scope="col">Run</th></tr></thead><tbody>${tail.worst.map(w=>`<tr><th scope="row">${esc(w.label)}</th><td>${fmt(w.responseMs)}</td><td>${fmt(w.opMedianMs)}</td><td>${w.run}</td></tr>`).join('')}</tbody></table>`:'<p class="secondary">No slow questions by this rule.</p>'}</div>
+    </div>
+    <p class="small muted">"Slow" means over the larger of 2× your typical time and a robust outlier cutoff (median + 3 MADs on the log scale). Time lost is the median per run of the time beyond typical spent on slow questions. Definitions: docs/FATIGUE.md.</p>`;
 }
 const OP_GLYPH={add:'+',sub:'–',mul:'×',div:'÷'};
 function cellColor(c){
