@@ -10,11 +10,11 @@ The 55 entries below correspond to every numbered product feature in the brainst
 | F04 | Seeded tests and replay | partial | `core/web` | Deterministic generator and slow-question replay; add sequence history replays |
 | F05 | Input optimization | partial | `web` | Auto-answer and keyboard focus work; add configurable keypad and sound |
 | F06 | Offline-first PWA | implemented | `web/storage` | App caches core assets; sessions stored locally and training runs offline after installation |
-| F07 | Per-question telemetry | implemented | `core` | Record operands timing changes and corrections; explicitly label first-key proxy |
+| F07 | Per-question telemetry | implemented | `core` | Record operands timing changes and corrections; explicitly label first-key proxy; wrong-prefix, full-wrong-answer, paste and visibility telemetry defined in docs/TELEMETRY.md |
 | F08 | Operation-specific analysis | implemented | `analytics/web` | Counts and median times for all four operations |
 | F09 | Arithmetic heatmaps | partial | `analytics/web` | Heatmap aggregation works; create accessible interactive grid UI |
 | F10 | Difficulty classification | partial | `core` | Multiple classification tags; validate taxonomy and extend harder patterns |
-| F11 | Speed accuracy analysis | partial | `analytics/web` | Show correction and latency strata; distinguish attempted errors |
+| F11 | Speed accuracy analysis | partial | `analytics/web` | Entry-quality typology (clean/revision/slip/calculation) on results; add latency-stratified analytics view across sessions |
 | F12 | Performance timeline | implemented | `analytics/web` | Benchmark-only trajectory, recent median, personal best |
 | F13 | Fatigue analysis | planned | `analytics` | Chart latency across session time and account for operation mix |
 | F14 | Question replay | implemented | `web/core` | Replay slowest five attempts with original operands outside benchmark |
@@ -42,7 +42,7 @@ The 55 entries below correspond to every numbered product feature in the brainst
 | F36 | Adaptive training volume | planned | `training` | Monitor signs of slowdown; recommendations never force continued practice |
 | F37 | Progress forecasting | planned | `analytics` | Calibrated prediction intervals from longitudinal runs; abstain if inadequate data |
 | F38 | Progress-based recommendations | partial | `training/web` | Weakest operation recommendation works; link to evidence and specific actions |
-| F39 | Keystroke analysis | partial | `core/analytics` | First-input time and corrections exist; add optional event-level input traces |
+| F39 | Keystroke analysis | implemented | `core/analytics` | First-input proxy, corrections, wrong prefixes and bounded per-question input traces (captureTrace flag); no UI toggle yet |
 | F40 | Hardware calibration | partial | `core/web` | Baseline computation exists; add independent number-copying interface |
 | F41 | Response-time distribution modeling | partial | `analytics` | Median and P90 exist; add tail/outlier analysis and adjusted distributions |
 | F42 | Arithmetic strategy experiments | partial | `training` | Seeded A/B assignment exists; add balanced items and outcome testing |

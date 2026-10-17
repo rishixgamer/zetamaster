@@ -4,6 +4,7 @@ import { ArithmeticSession } from '../../../packages/core/src/session.js';
 import { sessionStats, operationSummary } from '../../../packages/analytics/src/stats.js';
 import { benchmarkProgress } from '../../../packages/analytics/src/progress.js';
 import { diagnose } from '../../../packages/analytics/src/diagnostics.js';
+import { errorTypology } from '../../../packages/analytics/src/errors.js';
 import { chooseAdaptive, operationDrill, sprintRules, enduranceRules } from '../../../packages/training/src/drills.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { LESSONS } from '../../../packages/curriculum/src/lessons.js';
@@ -21,7 +22,7 @@ const getOps=()=>$$('#ops input:checked').map(x=>x.value);
 let sessions=[];
 let currentSession=null;
 let tick=null;
-let previousInput='';
+const MAX_FIELD=24;
 let currentMode='benchmark';
 let currentReplay=null;
 let currentSeed='';
@@ -85,7 +86,7 @@ function startGame({ replay=null }={}) {
   $('#idle-layout').classList.add('hidden');$('#top-metrics').classList.add('hidden');$('#results').classList.add('hidden');$('#game').classList.remove('hidden');
   $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':`${mode.toUpperCase()} PRACTICE`;
   $('#game-score').innerHTML='0 <small>correct</small>';
-  previousInput=''; $('#answer').value='';
+  $('#answer').value='';
   updateQuestion(); renderTick(); clearInterval(tick); tick=setInterval(renderTick,60);
   $('#answer').focus();
 }
@@ -96,36 +97,41 @@ function updateQuestion() {
 }
 function renderTick() {
   if(currentSession?.state!=='active')return;
-  const ms=currentSession.remainingMs();
+  const ms=currentSession.tick();
   $('#timer').textContent=durationFormat(ms);
   $('#time-fill').style.width=(100*ms/(currentSession.rules.durationSeconds*1000)).toFixed(2)+'%';
-  if(ms<=0)finishGame(false);
+  if(currentSession.state==='finished')finishGame(false);
 }
 function answerInput(event) {
   if(currentSession?.state!=='active')return;
   const input=event.currentTarget;
-  const clean=input.value.replace(/\D/g,'').slice(0,7);
-  if(clean!==input.value)input.value=clean;
-  const solved=currentSession.recordInput(clean,previousInput);
+  // Like the original, the field is not sanitized: stray characters must be deleted by the player.
+  if(input.value.length>MAX_FIELD)input.value=input.value.slice(0,MAX_FIELD);
+  const solved=currentSession.recordInput(input.value);
   if(currentSession.state==='finished'){finishGame(false);return;}
-  if(solved){input.value='';previousInput='';updateQuestion();}
-  else previousInput=clean;
+  if(solved){input.value='';updateQuestion();}
 }
 async function finishGame(endedEarly) {
   if(!currentSession || currentSession.state==='ready')return;
   clearInterval(tick);tick=null;
-  const result=currentSession.finish();
+  // The core marks manual or short runs as ineligible; the UI never upgrades a result to benchmark.
+  const result=currentSession.finish({endedEarly});
   if(!result || lastResult===result)return;
-  // A benchmark must actually run its full allotted duration.
-  if(endedEarly || result.elapsedMs < currentSession.rules.durationSeconds*1000-80) result.benchmark=false;
   lastResult=result;
   await saveSession(result);
   $('#game').classList.add('hidden');$('#results').classList.remove('hidden');
   $('#result-title').textContent=result.benchmark?'Standard benchmark completed':`${result.mode} session completed`;
   $('#result-score').textContent=result.score;
   const stats=sessionStats(result);
-  $('#result-detail').innerHTML=`<p class="secondary">${result.events.length} solved · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}</p>`;
+  const typology=errorTypology(result.events);
+  const hidden=result.integrity?.hiddenMs>0?` · tab hidden ${fmt(result.integrity.hiddenMs)} (clock kept running)`:'';
+  $('#result-detail').innerHTML=`<p class="secondary">${result.events.length} solved · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}${hidden}</p>${typologyHtml(typology)}`;
   await refresh();
+}
+const ERROR_LABELS={clean:'Clean entry',revision:'Revised (deleted a correct digit)',slip:'Slip (wrong digit, fixed mid-entry)',calculation:'Calculation error (complete wrong answer first)'};
+function typologyHtml(t){
+  if(!t.total)return '';
+  return `<div class="breakdown typology" aria-label="Entry quality">${t.types.map(x=>`<div class="breakdown-row"><span>${ERROR_LABELS[x.type]}</span><div class="bar"><div style="width:${(100*(x.share??0)).toFixed(1)}%"></div></div><span>${x.count} <span class="muted">· ${fmt(x.medianMs)}</span></span></div>`).join('')}</div><p class="small muted">Counts of solved questions by entry pattern, with median solve time. Derived from keystroke telemetry; slips and revisions cost time but never cost points.</p>`;
 }
 function showIdle(){if(currentSession?.state==='active')return;$('#idle-layout').classList.remove('hidden');$('#top-metrics').classList.remove('hidden');$('#game').classList.add('hidden');$('#results').classList.add('hidden');}
 function renderAnalytics(){
@@ -139,8 +145,8 @@ function renderAnalytics(){
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Time by operation</h2><div class="breakdown">${ops.map(o=>`<div class="breakdown-row"><span>${opNames[o.op]}</span><div class="bar"><div style="width:${Math.max(0,(o.medianMs??0)/maxTime*100)}%"></div></div><span>${fmt(o.medianMs)} <span class="muted">(${o.count})</span></span></div>`).join('')}</div><p class="secondary">Median per correctly solved problem. Lower is faster. Small samples may be unreliable.</p></div>
     <div class="panel"><h2 class="section-title">Recent benchmark scores</h2>${chart.length?`<div class="sparkline" role="img" aria-label="Recent benchmark scores">${chart.map(x=>`<div title="${x.score} correct" style="height:${Math.min(100,Math.max(3,x.score/90*100))}%"></div>`).join('')}</div><p class="small muted">Last ${chart.length} standard runs · Personal best ${p.personalBest}</p>`:'<div class="empty">Complete a standard benchmark to start your chart.</div>'}</div></div>
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Current bottlenecks</h2>${worst.length?worst.map(w=>`<p class="secondary"><strong>${opNames[w.key]}</strong> · ${fmt(w.rawMedianMs)} median · ${w.count} observations</p>`).join(''):'<p class="secondary">More solved questions needed before identifying reliable weaknesses.</p>'}<p class="small muted">Heuristic, sample-size-smoothed estimates; not a validated cognitive assessment.</p></div>
-    <div class="panel"><h2 class="section-title">Slowest questions</h2>${allEvents.length?[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5).map(q=>`<div class="history-row"><span>${q.left} ${q.symbol} ${q.right} = ${q.answer}</span><strong>${fmt(q.responseMs)}</strong><span>${esc(q.op)}</span></div>`).join(''):'<div class="empty">No solved questions yet.</div>'}<button type="button" class="secondary-btn" id="replay-slow" ${allEvents.length?'':'disabled'}>Replay slowest five →</button></div></div>
-    <div class="panel"><h2 class="section-title">Recent sessions</h2>${recent.length?recent.map(s=>`<div class="history-row"><span>${esc(new Date(s.startedAt).toLocaleString())} · ${esc(s.mode)}${s.benchmark?' · verified':''}</span><strong>${s.score}</strong><span>${s.benchmark?'Standard':'Practice'}</span></div>`).join(''):'<div class="empty">Your first session will appear here.</div>'}</div>
+    <div class="panel"><h2 class="section-title">Slowest questions</h2>${allEvents.length?[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5).map(q=>`<div class="history-row"><span>${esc(`${q.left} ${q.symbol} ${q.right} = ${q.answer}`)}</span><strong>${fmt(q.responseMs)}</strong><span>${esc(q.op)}</span></div>`).join(''):'<div class="empty">No solved questions yet.</div>'}<button type="button" class="secondary-btn" id="replay-slow" ${allEvents.length?'':'disabled'}>Replay slowest five →</button></div></div>
+    <div class="panel"><h2 class="section-title">Recent sessions</h2>${recent.length?recent.map(s=>`<div class="history-row"><span>${esc(new Date(s.startedAt).toLocaleString())} · ${esc(s.mode)}${s.benchmark?' · verified':''}</span><strong>${esc(s.score)}</strong><span>${s.benchmark?'Standard':'Practice'}</span></div>`).join(''):'<div class="empty">Your first session will appear here.</div>'}</div>
     <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" accept="application/json" hidden></div><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
   $('#replay-slow').addEventListener('click',()=>{
     const slow=[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5);
@@ -180,6 +186,7 @@ function bind(){
   $('#adaptive-quick').addEventListener('click',()=>{$('#mode').value='adaptive';updateMode();startGame();});
   $('#answer').addEventListener('input',answerInput);
   $('#answer').addEventListener('keydown',e=>{if(e.key==='Enter'&&currentSession?.state==='active'){currentSession.markWrongSubmission();e.preventDefault();}});
+  document.addEventListener('visibilitychange',()=>{currentSession?.recordVisibility(document.hidden);if(!document.hidden)renderTick();});
   $('#finish').addEventListener('click',()=>finishGame(true));
   $('#again').addEventListener('click',()=>{showIdle();startGame({replay:currentReplay});});
   $('#analyze-result').addEventListener('click',()=>{showIdle();setView('analytics');});

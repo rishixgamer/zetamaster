@@ -28,7 +28,7 @@ User practice / retest / progress
 
 `createGenerator(rules, seed, weights?) -> () => Question`; `makeQuestion(op,a,b,sequence) -> Question`.
 
-`ArithmeticSession({rules,generator,clock,wallClock,mode,seed})` offers `start()`, `recordInput(value, previousValue)`, `remainingMs()`, and `finish()`. The pure generator never accesses the DOM or stores results.
+`ArithmeticSession({rules,generator,clock,wallClock,mode,seed,captureTrace})` offers `start()`, `recordInput(fieldText)` (tracks the previous value itself and accepts on `trim() === String(answer)`), `markWrongSubmission()`, `recordVisibility(hidden)`, `tick()`, `remainingMs()`, and `finish({endedEarly})`. Results carry `engineVersion` and `integrity`. The pure generator never accesses the DOM or stores results.
 
 **Default mode invariant:** benchmark eligibility is checked against the immutable rule snapshot and full duration; early termination must be marked practice. Future additions must not use adaptive weighting for benchmark mode.
 
@@ -50,7 +50,7 @@ Quant drills and historical trading interview formats **never** reuse `zetamac-d
 
 ### Storage
 
-`listSessions`, `saveSession`, `deleteAllSessions`, `importSessions` use IndexedDB first and localStorage fallback. Data is device-local. Future cloud sync must implement an interface rather than inserting fetch calls into the core engine, and require affirmative consent.
+`listSessions`, `saveSession`, `deleteAllSessions`, `importSessions` use IndexedDB first and localStorage fallback. Imports go through `sanitizeImportedSession`, which rebuilds questions from source operands and recomputes `benchmark` from the mode, the rules snapshot, the duration and the score/event count. Data is device-local. Future cloud sync must implement an interface rather than inserting fetch calls into the core engine, and require affirmative consent.
 
 ## Schema sketch
 

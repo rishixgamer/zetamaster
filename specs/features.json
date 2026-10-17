@@ -87,7 +87,7 @@
       "status": "implemented",
       "owner": "core",
       "acceptance": [
-        "Record operands timing changes and corrections; explicitly label first-key proxy"
+        "Record operands timing changes and corrections; explicitly label first-key proxy; wrong-prefix, full-wrong-answer, paste and visibility telemetry defined in docs/TELEMETRY.md"
       ],
       "dependencies": [],
       "benchmarkSafe": true
@@ -135,7 +135,7 @@
       "status": "partial",
       "owner": "analytics/web",
       "acceptance": [
-        "Show correction and latency strata; distinguish attempted errors"
+        "Entry-quality typology (clean/revision/slip/calculation) on results; add latency-stratified analytics view across sessions"
       ],
       "dependencies": [],
       "benchmarkSafe": true
@@ -468,10 +468,10 @@
       "id": "F39",
       "area": "Laboratory",
       "title": "Keystroke analysis",
-      "status": "partial",
+      "status": "implemented",
       "owner": "core/analytics",
       "acceptance": [
-        "First-input time and corrections exist; add optional event-level input traces"
+        "First-input proxy, corrections, wrong prefixes and bounded per-question input traces (captureTrace flag); no UI toggle yet"
       ],
       "dependencies": [],
       "benchmarkSafe": true

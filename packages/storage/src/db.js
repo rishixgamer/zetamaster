@@ -1,3 +1,4 @@
+import { sanitizeImportedSession } from './sanitize.js';
 const DATABASE='zetamaster-v1';
 const FALLBACK_KEY='zetamaster-sessions-v1';
 const MAX_FALLBACK=500;
@@ -41,9 +42,10 @@ export async function importSessions(records) {
   if(!Array.isArray(records))throw new Error('Import must be an array');
   if(records.length>10000)throw new Error('Import exceeds 10,000 sessions');
   let count=0;
-  for(const s of records){
-    if(!s || typeof s!=='object' || !Number.isFinite(s.score) || !Array.isArray(s.events) || typeof s.startedAt!=='string')continue;
-    await saveSession({...s,benchmark:Boolean(s.benchmark && s.rules?.id==='zetamac-default-v1')}); count++;
+  for(const raw of records){
+    const s=sanitizeImportedSession(raw);
+    if(!s)continue;
+    await saveSession(s); count++;
   }
   return count;
 }
