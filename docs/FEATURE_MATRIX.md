@@ -18,7 +18,7 @@ The 55 entries below correspond to every numbered product feature in the brainst
 | F12 | Performance timeline | implemented | `analytics/web` | Benchmark-only trajectory, recent median, personal best |
 | F13 | Fatigue analysis | planned | `analytics` | Chart latency across session time and account for operation mix |
 | F14 | Question replay | implemented | `web/core` | Replay slowest five attempts with original operands outside benchmark |
-| F15 | Statistical confidence | partial | `analytics` | Shrinkage plus distribution-free median CIs on heatmap cells; extend uncertainty display to operation summaries and score trends |
+| F15 | Statistical confidence | implemented | `analytics` | Shrinkage and distribution-free median CIs on heatmap cells, operation summaries and recent scores; Sen trend interval; percentile band visualization; sample-size gates throughout |
 | F16 | Automatic bottleneck identification | partial | `analytics` | Operation and tag weaknesses from historical event stream with sample warnings |
 | F17 | Intelligent drill generation | partial | `training` | Weight weaker operations; generate targeted technique or fact drills later |
 | F18 | Adaptive difficulty | planned | `training` | Raise/lower difficulty based on rolling mastery while preserving original benchmark |
@@ -46,7 +46,7 @@ The 55 entries below correspond to every numbered product feature in the brainst
 | F40 | Hardware calibration | partial | `core/web` | Baseline computation exists; add independent number-copying interface |
 | F41 | Response-time distribution modeling | partial | `analytics` | Median and P90 exist; add tail/outlier analysis and adjusted distributions |
 | F42 | Arithmetic strategy experiments | partial | `training` | Seeded A/B assignment exists; add balanced items and outcome testing |
-| F43 | Performance consistency scoring | partial | `analytics` | 8-of-10 70+ target rule exists; add trend and quantiles display |
+| F43 | Performance consistency scoring | implemented | `analytics` | 8-of-10 70+ goal with progress, 8th-best gap, minimum runs-to-goal, rolling median and 10th-90th band chart, Theil-Sen trend; standard benchmarks only (docs/CONSISTENCY.md) |
 | F44 | Ranking system | planned | `community` | Sustained verified benchmark ranks separated from practice ranks |
 | F45 | Skill-based achievements | planned | `community` | Grant goals based on correct verified events; avoid rewarding idle screen time |
 | F46 | Global leaderboards | planned | `services` | Explicit opt-in server verified rankings with abuse and privacy protections |

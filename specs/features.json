@@ -180,10 +180,10 @@
       "id": "F15",
       "area": "Analytics",
       "title": "Statistical confidence",
-      "status": "partial",
+      "status": "implemented",
       "owner": "analytics",
       "acceptance": [
-        "Shrinkage plus distribution-free median CIs on heatmap cells; extend uncertainty display to operation summaries and score trends"
+        "Shrinkage and distribution-free median CIs on heatmap cells, operation summaries and recent scores; Sen trend interval; percentile band visualization; sample-size gates throughout"
       ],
       "dependencies": [],
       "benchmarkSafe": true
@@ -516,10 +516,10 @@
       "id": "F43",
       "area": "Laboratory",
       "title": "Performance consistency scoring",
-      "status": "partial",
+      "status": "implemented",
       "owner": "analytics",
       "acceptance": [
-        "8-of-10 70+ target rule exists; add trend and quantiles display"
+        "8-of-10 70+ goal with progress, 8th-best gap, minimum runs-to-goal, rolling median and 10th-90th band chart, Theil-Sen trend; standard benchmarks only (docs/CONSISTENCY.md)"
       ],
       "dependencies": [],
       "benchmarkSafe": true

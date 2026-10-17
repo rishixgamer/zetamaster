@@ -1,4 +1,6 @@
-import { median } from './stats.js';
+import { median, medianCI } from './stats.js';
+
+export { medianCI };
 import { classifyError } from './errors.js';
 
 /** Legacy flat aggregation: one entry per exact operand pair. */
@@ -35,23 +37,6 @@ export function heatmapLayout(op) {
 }
 
 const indexIn = (axis, value) => axis.findIndex(({range:[lo,hi]}) => value>=lo && value<=hi);
-
-/**
- * Distribution-free confidence interval for a median from order statistics (binomial, p = 0.5).
- * Returns null when n is too small for the requested coverage (n < 6 at 95%).
- */
-export function medianCI(values, confidence = 0.95) {
-  const xs = values.filter(Number.isFinite).sort((a,b)=>a-b), n = xs.length;
-  if (!n) return null;
-  const tail = (1-confidence)/2;
-  let k = -1;
-  if (n <= 1000) {
-    let pmf = Math.pow(0.5, n), cdf = 0;
-    for (let i = 0; i < n; i++) { cdf += pmf; if (cdf > tail) break; k = i; pmf *= (n-i)/(i+1); }
-  } else k = Math.floor(n/2 - 1.959964*Math.sqrt(n)/2) - 1;
-  if (k < 0) return null;
-  return { low: xs[k], high: xs[n-1-k], confidence, n };
-}
 
 function evidenceFor(n) { return n===0?'none':n<MIN_CELL_SAMPLES?'insufficient':n<STABLE_CELL_SAMPLES?'emerging':'stable'; }
 

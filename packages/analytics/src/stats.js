@@ -6,10 +6,27 @@ export function operationSummary(events) {
   return ['add','sub','mul','div'].map(op => {
     const xs=events.filter(e=>e.op===op && e.correct);
     const times=xs.map(e=>e.responseMs);
-    return { op, count: xs.length, medianMs: median(times), meanMs: mean(times), p90Ms: percentile(times, .9), corrections: xs.reduce((s,e)=>s+e.corrections,0) };
+    return { op, count: xs.length, medianMs: median(times), meanMs: mean(times), p90Ms: percentile(times, .9), ci: medianCI(times), corrections: xs.reduce((s,e)=>s+e.corrections,0) };
   });
 }
 export function sessionStats(s) {
   const events=s?.events??[];
   return { score:s?.score??0, meanMs:mean(events.map(e=>e.responseMs)), medianMs:median(events.map(e=>e.responseMs)), p90Ms:percentile(events.map(e=>e.responseMs),.9), perOperation:operationSummary(events), slowest:[...events].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5) };
+}
+
+/**
+ * Distribution-free confidence interval for a median from order statistics (binomial, p = 0.5).
+ * Returns null when n is too small for the requested coverage (n < 6 at 95%).
+ */
+export function medianCI(values, confidence = 0.95) {
+  const xs = values.filter(Number.isFinite).sort((a,b)=>a-b), n = xs.length;
+  if (!n) return null;
+  const tail = (1-confidence)/2;
+  let k = -1;
+  if (n <= 1000) {
+    let pmf = Math.pow(0.5, n), cdf = 0;
+    for (let i = 0; i < n; i++) { cdf += pmf; if (cdf > tail) break; k = i; pmf *= (n-i)/(i+1); }
+  } else k = Math.floor(n/2 - 1.959964*Math.sqrt(n)/2) - 1;
+  if (k < 0) return null;
+  return { low: xs[k], high: xs[n-1-k], confidence, n };
 }

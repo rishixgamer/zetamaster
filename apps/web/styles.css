@@ -14,3 +14,16 @@
 .link-btn{background:none;border:0;color:var(--accent);text-decoration:underline;padding:0;font-size:inherit}
 .typology{margin-top:14px}
 @media (max-width:820px){.heatmap-layout{grid-template-columns:1fr}}
+
+/* Benchmark consistency (F43/F15) */
+.consistency-tiles{grid-template-columns:repeat(4,minmax(0,1fr));margin:14px 0}.consistency-tiles strong small{font-size:13px;font-weight:600;color:var(--muted)}
+.tile-note{display:block;margin-top:6px;font-size:12px;color:var(--muted);line-height:1.35}
+.chart-legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--muted);margin:10px 0 6px}.chart-legend span{display:inline-flex;align-items:center;gap:6px}
+.key-dot,.key-line,.key-band,.key-target{display:inline-block;flex:none}.key-dot{width:8px;height:8px;border-radius:50%;background:#3987e5}.key-line{width:14px;height:2px;border-radius:1px;background:#d95926}
+.key-band{width:14px;height:10px;border-radius:2px;background:rgba(217,89,38,.22)}.key-target{width:14px;height:1px;background:#c3cfdc}
+.chart-scroll{overflow-x:auto;padding:4px}.chart-wrap{position:relative;border-radius:8px;min-width:640px}.chart-wrap:focus-visible{outline:2px solid var(--accent);outline-offset:4px}.score-chart{display:block;width:100%;height:auto}
+.score-chart .axis{font-size:11px;fill:var(--muted);font-variant-numeric:tabular-nums}.score-chart .axis.strong{fill:#c3cfdc}
+.chart-tip{position:absolute;top:8px;transform:translateX(12px);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--muted);pointer-events:none;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.chart-tip.flip{transform:translateX(calc(-100% - 12px))}.chart-tip div{display:flex;align-items:center;gap:6px;margin-top:3px}.chart-tip strong{color:var(--text);font-variant-numeric:tabular-nums}.chart-tip .tip-head{margin:0 0 4px;color:var(--text);font-weight:700}
+.table-view{margin-top:10px;font-size:13px}.table-view summary{cursor:pointer;color:var(--accent)}.table-view table{width:100%;border-collapse:collapse;margin-top:8px;font-variant-numeric:tabular-nums}.table-view th,.table-view td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--border)}.table-view th{color:var(--muted);font-weight:600}
+@media (max-width:820px){.consistency-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}

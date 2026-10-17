@@ -34,7 +34,7 @@ User practice / retest / progress
 
 ### Analytics
 
-`sessionStats(session)`, `operationSummary(events)`, `diagnose(sessions)`, `benchmarkProgress(sessions)` consume immutable historical records. `buildHeatmap(sessions, op, {scope})` bins solved events by *source* operands (table factor × band for mul/div, band × band for add/sub) and returns per-cell counts, medians, shrunken ratios and `medianCI` intervals. `errorTypology(events)` classifies entry quality (definitions in [TELEMETRY.md](./TELEMETRY.md)). Diagnoses are descriptive; current smoothed estimates are *not* psychometric calibration or causal evidence of improvement.
+`sessionStats(session)`, `operationSummary(events)`, `diagnose(sessions)`, `benchmarkProgress(sessions)` consume immutable historical records. `buildHeatmap(sessions, op, {scope})` bins solved events by *source* operands (table factor × band for mul/div, band × band for add/sub) and returns per-cell counts, medians, shrunken ratios and `medianCI` intervals. `consistencySummary(sessions)` derives goal progress, rolling bands, a Theil–Sen trend and median CIs from standard benchmarks only ([CONSISTENCY.md](./CONSISTENCY.md)). `errorTypology(events)` classifies entry quality (definitions in [TELEMETRY.md](./TELEMETRY.md)). Diagnoses are descriptive; current smoothed estimates are *not* psychometric calibration or causal evidence of improvement.
 
 ### Training
 

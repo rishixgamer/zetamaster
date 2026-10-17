@@ -5,8 +5,10 @@ import { sessionStats, operationSummary } from '../../../packages/analytics/src/
 import { benchmarkProgress } from '../../../packages/analytics/src/progress.js';
 import { diagnose } from '../../../packages/analytics/src/diagnostics.js';
 import { errorTypology } from '../../../packages/analytics/src/errors.js';
+import { consistencySummary } from '../../../packages/analytics/src/consistency.js';
 import { buildHeatmap, slowestCells, MIN_CELL_SAMPLES } from '../../../packages/analytics/src/heatmap.js';
 import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, cellDrill } from '../../../packages/training/src/drills.js';
+import { scoreChartSvg, chartLayout, nearestIndex, CHART } from './score-chart.js';
 import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { LESSONS } from '../../../packages/curriculum/src/lessons.js';
@@ -140,20 +142,19 @@ function typologyHtml(t){
 }
 function showIdle(){if(currentSession?.state==='active')return;$('#idle-layout').classList.remove('hidden');$('#top-metrics').classList.remove('hidden');$('#game').classList.add('hidden');$('#results').classList.add('hidden');}
 function renderAnalytics(){
-  const p=benchmarkProgress(sessions), allEvents=sessions.flatMap(s=>s.events??[]), ops=operationSummary(allEvents), diagnostics=diagnose(sessions);
+  const allEvents=sessions.flatMap(s=>s.events??[]), ops=operationSummary(allEvents), diagnostics=diagnose(sessions);
   const worst=diagnostics.weaknesses.filter(w=>w.kind==='operation' && w.count>=5).slice(0,2);
   const recent=sessions.slice(0,8);
   const maxTime=Math.max(5000,...ops.map(x=>x.medianMs??0));
-  const chart=p.trajectory.slice(-20);
   $('#analytics-root').innerHTML=`
-    <div class="stat-grid"><div class="metric"><span>BEST BENCHMARK</span><strong>${p.personalBest??'—'}</strong></div><div class="metric"><span>RECENT MEDIAN</span><strong>${p.recentMedian??'—'}</strong></div><div class="metric"><span>70+ MASTERY</span><strong>${p.mastery70?'YES':'NOT YET'}</strong></div></div>
+    <section class="panel" id="consistency-root" aria-labelledby="consistency-title"></section>
     <section class="panel" id="heatmap-root" aria-labelledby="heatmap-title"></section>
-    <div class="analysis-grid"><div class="panel"><h2 class="section-title">Time by operation</h2><div class="breakdown">${ops.map(o=>`<div class="breakdown-row"><span>${opNames[o.op]}</span><div class="bar"><div style="width:${Math.max(0,(o.medianMs??0)/maxTime*100)}%"></div></div><span>${fmt(o.medianMs)} <span class="muted">(${o.count})</span></span></div>`).join('')}</div><p class="secondary">Median per correctly solved problem. Lower is faster. Small samples may be unreliable.</p></div>
-    <div class="panel"><h2 class="section-title">Recent benchmark scores</h2>${chart.length?`<div class="sparkline" role="img" aria-label="Recent benchmark scores">${chart.map(x=>`<div title="${x.score} correct" style="height:${Math.min(100,Math.max(3,x.score/90*100))}%"></div>`).join('')}</div><p class="small muted">Last ${chart.length} standard runs · Personal best ${p.personalBest}</p>`:'<div class="empty">Complete a standard benchmark to start your chart.</div>'}</div></div>
+    <div class="panel"><h2 class="section-title">Time by operation</h2><div class="breakdown">${ops.map(o=>`<div class="breakdown-row"><span>${opNames[o.op]}</span><div class="bar"><div style="width:${Math.max(0,(o.medianMs??0)/maxTime*100)}%"></div></div><span>${fmt(o.medianMs)} <span class="muted">(${o.count}${o.ci?` · CI ${fmt(o.ci.low)}–${fmt(o.ci.high)}`:''})</span></span></div>`).join('')}</div><p class="secondary">Median per correctly solved problem across all sessions, with sample count and a 95% CI of the median once there are 6 or more. Lower is faster. Practice sessions included.</p></div>
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Current bottlenecks</h2>${worst.length?worst.map(w=>`<p class="secondary"><strong>${opNames[w.key]}</strong> · ${fmt(w.rawMedianMs)} median · ${w.count} observations</p>`).join(''):'<p class="secondary">More solved questions needed before identifying reliable weaknesses.</p>'}<p class="small muted">Heuristic, sample-size-smoothed estimates; not a validated cognitive assessment.</p></div>
     <div class="panel"><h2 class="section-title">Slowest questions</h2>${allEvents.length?[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5).map(q=>`<div class="history-row"><span>${esc(`${q.left} ${q.symbol} ${q.right} = ${q.answer}`)}</span><strong>${fmt(q.responseMs)}</strong><span>${esc(q.op)}</span></div>`).join(''):'<div class="empty">No solved questions yet.</div>'}<button type="button" class="secondary-btn" id="replay-slow" ${allEvents.length?'':'disabled'}>Replay slowest five →</button></div></div>
     <div class="panel"><h2 class="section-title">Recent sessions</h2>${recent.length?recent.map(s=>`<div class="history-row"><span>${esc(new Date(s.startedAt).toLocaleString())} · ${esc(s.mode)}${s.benchmark?' · verified':''}</span><strong>${esc(s.score)}</strong><span>${s.benchmark?'Standard':'Practice'}</span></div>`).join(''):'<div class="empty">Your first session will appear here.</div>'}</div>
     <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" accept="application/json" hidden></div><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
+  renderConsistency();
   renderHeatmap();
   $('#replay-slow').addEventListener('click',()=>{
     const slow=[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5);
@@ -170,6 +171,56 @@ function renderAnalytics(){
   });
   $('#clear-history').addEventListener('click',async()=>{
     if(confirm('Permanently delete all ZetaMaster session history on this device?')){await deleteAllSessions();await refresh();}
+  });
+}
+const signed=v=>`${v>0?'+':v<0?'−':'±'}${Math.abs(v).toFixed(1)}`;
+function consistencyTiles(c){
+  const g=c.goal, r=c.recent, t=c.trend;
+  const tile=(label,value,note)=>`<div class="metric"><span>${label}</span><strong>${value}</strong><small class="tile-note">${note}</small></div>`;
+  return `<div class="stat-grid consistency-tiles">
+    ${tile(`LAST ${g.window} AT ${g.target}+`,g.windowRuns?`${g.hits} / ${g.windowRuns}`:'—',g.met?`Goal met: ${g.need} of ${g.window} at ${g.target}+`:g.windowRuns<g.window?`Goal needs ${g.window} runs; you have ${g.windowRuns}`:`Goal: ${g.need} of ${g.window}`)}
+    ${tile(`${g.need}TH-BEST OF LAST ${g.window}`,g.kthBest??'—',g.kthBest===null?`Needs ${g.need} runs`:g.pointsShort?`${g.pointsShort} points below ${g.target}`:`At or above ${g.target}`)}
+    ${tile('RECENT MEDIAN',r.median??'—',r.ci?`95% CI ${r.ci.low}–${r.ci.high} · last ${r.n}`:r.n?`CI needs ≥6 runs (has ${r.n})`:'No standard runs yet')}
+    ${tile('TREND',t?`${signed(t.slope)}<small> pts/run</small>`:'—',t?`95% CI ${signed(t.low)} to ${signed(t.high)} · last ${t.n}`:`Needs ≥6 runs`)}
+  </div>`;
+}
+function renderConsistency(){
+  const root=$('#consistency-root'); if(!root)return;
+  const c=consistencySummary(sessions), g=c.goal;
+  const pts=c.series;
+  const verdict=!pts.length?'Complete a standard 120-second benchmark to start tracking consistency.'
+    :g.met?`Goal met: ${g.hits} of your last ${g.window} standard runs scored ${g.target}+.`
+    :`The goal needs at least ${g.runsToGoal} more standard run${g.runsToGoal===1?'':'s'}, even if every one scores ${g.target}+. That's a minimum, not a forecast.`;
+  root.innerHTML=`<div class="section-header"><div><div class="eyebrow">CONSISTENCY · STANDARD BENCHMARKS ONLY</div><h2 class="section-title" id="consistency-title">Benchmark consistency</h2></div><span class="tag">BEST ${c.personalBest??'—'}</span></div>
+    ${consistencyTiles(c)}
+    <p class="secondary">${esc(verdict)}</p>
+    ${pts.length?`<div class="chart-legend" aria-hidden="true"><span><i class="key-dot"></i>Benchmark score</span><span><i class="key-line"></i>Rolling median (last ${g.window})</span><span><i class="key-band"></i>10th–90th percentile (last ${g.window})</span><span><i class="key-target"></i>${g.target} target</span></div>
+    <div class="chart-scroll"><div class="chart-wrap" tabindex="0" role="img" aria-describedby="consistency-help" aria-label="${esc(`Benchmark scores for ${pts.length} standard runs. Latest ${pts.at(-1).score}. Recent median ${c.recent.median}. ${g.hits} of last ${g.windowRuns} at ${g.target} or more.`)}">${scoreChartSvg(pts,g.target)}<div class="chart-tip" hidden></div></div></div>
+    <p class="small muted" id="consistency-help">Hover, or focus the chart and use the arrow keys, to read each run. ${pts.length>CHART.maxRuns?`Showing the latest ${CHART.maxRuns} of ${pts.length} runs. `:''}Bands start after 3 runs and the trend after 6. Runs aren't independent trials, so read the intervals as rough.</p>
+    <details class="table-view"><summary>Show table of standard runs</summary><table><thead><tr><th scope="col">Run</th><th scope="col">Date</th><th scope="col">Score</th><th scope="col">Rolling median</th><th scope="col">10th–90th pct.</th></tr></thead><tbody>${[...pts].reverse().map(p=>`<tr><td>${p.run}</td><td>${esc(new Date(p.at).toLocaleString())}</td><td>${p.score}</td><td>${p.median??'—'}</td><td>${p.p10===null?'—':`${p.p10.toFixed(1)}–${p.p90.toFixed(1)}`}</td></tr>`).join('')}</tbody></table></details>`:''}`;
+  const wrap=root.querySelector('.chart-wrap'); if(!wrap)return;
+  const scroller=root.querySelector('.chart-scroll'); scroller.scrollLeft=scroller.scrollWidth; // narrow screens: start at the latest runs
+  const L=chartLayout(pts,g.target), svg=wrap.querySelector('svg'), tip=wrap.querySelector('.chart-tip'), hair=svg.querySelector('.crosshair');
+  let idx=null;
+  const show=i=>{
+    idx=i; const p=L.shown[i], x=L.xs[i];
+    hair.setAttribute('x1',x);hair.setAttribute('x2',x);hair.setAttribute('visibility','visible');
+    tip.replaceChildren();
+    const row=(value,label,cls)=>{const d=document.createElement('div');if(cls){const k=document.createElement('i');k.className=cls;d.append(k);}const b=document.createElement('strong');b.textContent=value;d.append(b,document.createTextNode(' '+label));return d;};
+    const head=document.createElement('div');head.className='tip-head';head.textContent=`Run ${p.run} · ${new Date(p.at).toLocaleDateString()}`;
+    tip.append(head,row(String(p.score),'score','key-dot'),row(p.median===null?'—':String(p.median),'rolling median','key-line'),row(p.p10===null?'—':`${p.p10.toFixed(0)}–${p.p90.toFixed(0)}`,'10th–90th pct.','key-band'));
+    tip.hidden=false;
+    const frac=x/CHART.width; tip.style.left=`${(frac*100).toFixed(2)}%`; tip.classList.toggle('flip',frac>0.6);
+  };
+  const hide=()=>{hair.setAttribute('visibility','hidden');tip.hidden=true;};
+  wrap.addEventListener('pointermove',e=>{const box=svg.getBoundingClientRect();show(nearestIndex(L.xs,(e.clientX-box.left)/box.width*CHART.width));});
+  wrap.addEventListener('pointerleave',()=>{if(document.activeElement!==wrap)hide();});
+  wrap.addEventListener('focus',()=>show(idx??L.shown.length-1));
+  wrap.addEventListener('blur',hide);
+  wrap.addEventListener('keydown',e=>{
+    const n=L.shown.length, cur=idx??n-1;
+    const next={ArrowLeft:cur-1,ArrowRight:cur+1,Home:0,End:n-1}[e.key];
+    if(next===undefined)return; e.preventDefault(); show(Math.max(0,Math.min(n-1,next)));
   });
 }
 const OP_GLYPH={add:'+',sub:'–',mul:'×',div:'÷'};

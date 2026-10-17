@@ -27,6 +27,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 - Custom single/multi-operation sessions, operation isolation, 30-second sprints, 300-second endurance, custom duration, deterministic seeds, slowest-question replay.
 - Timed question records, first-keystroke timing proxy, corrections, slip/calculation-error typology, bounded input traces, tab-visibility integrity flags ([Telemetry](docs/TELEMETRY.md)), operation tags, medians, P90 latency and slow-question review.
 - Interactive, keyboard-accessible weakness heatmaps per operation, with sample counts, median CIs, a benchmark-only scope, deep links, and one-click 60 s cell drills that are always saved as practice.
+- Benchmark consistency dashboard: progress toward 8-of-10 at 70+, the 8th-best gap, rolling median and 10th–90th band chart, robust trend, and median CIs ([Consistency metrics](docs/CONSISTENCY.md)).
 - Local saved session history; separate standard and practice runs; rolling benchmark median, personal best and consistent-70 goal check.
 - Initial adaptive operation weighting, basic diagnostics, personalized 15-minute daily plan, and 12 deterministic arithmetic lesson cards.
 - IndexedDB-first session storage with localStorage fallback, downloadable JSON/CSV, JSON import, and opt-in local history deletion.
