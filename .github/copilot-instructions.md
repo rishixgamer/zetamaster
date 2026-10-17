@@ -1,0 +1,1 @@
+Follow AGENTS.md. The default benchmark distribution and non-benchmark score isolation are safety-critical invariants. Every feature must have an acceptance test. Do not install third-party analytics, cloud services, or undocumented APIs.
