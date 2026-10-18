@@ -15,11 +15,16 @@ import { intervalSet, intervalSetRationale } from '../../../packages/training/sr
 import { skillOf, skillCellFromId } from '../../../packages/training/src/skills.js';
 import { drillReviewOutcome, drillReviewEligible, reviewQueue, SKILL_REVIEW_MIN_SOLVES, SKILL_REVIEW_FAST_MS } from '../../../packages/training/src/reviews.js';
 import { gauntletPlan, gauntletLaunch, gauntletGenerator } from '../../../packages/training/src/gauntlet.js';
-import { scoreChartSvg, chartLayout, nearestIndex, CHART } from './score-chart.js';
+import { scoreChartSvg, forecastChartSvg, forecastChartLayout, chartLayout, nearestIndex, CHART } from './score-chart.js';
 import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { buildRecommendations } from '../../../packages/training/src/recommendations.js';
 import { comparePolicies } from '../../../packages/training/src/policies.js';
+import { evaluateProgression, PROGRESSION_STAGES, getStageForScore, MIN_PROGRESSION_BENCHMARKS } from '../../../packages/training/src/progression.js';
+import { selectPersonalBestBenchmark, buildGhostTrajectory, compareGhostPace } from '../../../packages/analytics/src/ghost.js';
+import { generateCopyTrials, evaluateCopyTrial, computeHardwareDiagnostics } from '../../../packages/core/src/calibration.js';
+import { forecastProgress, MIN_FORECAST_RUNS, DEFAULT_FORECAST_HORIZON } from '../../../packages/analytics/src/forecasting.js';
+import { benchmarkSeries } from '../../../packages/analytics/src/consistency.js';
 import { LESSONS } from '../../../packages/curriculum/src/lessons.js';
 import { planForLesson, askPlan, transferPlan, checkGuideAnswer, guideDrillTarget, GUIDE_MODES, GUIDE_LESSON_IDS } from '../../../packages/curriculum/src/guides.js';
 import { suggestLesson } from '../../../packages/curriculum/src/explanations.js';
@@ -45,6 +50,8 @@ const MAX_FIELD=24;
 let currentMode='benchmark';
 let currentReplay=null;
 let currentDrill=null;
+let activeGhostTrajectory=null; // Personal-best ghost racing trajectory (F33)
+let calibState={step:'intro',trials:[],index:0,trialStartedAt:0,results:[]}; // Hardware calibration (F40)
 const heatmapState={op:'mul',scope:'benchmark',focus:{row:0,col:0},selected:null};
 let currentSeed='';
 let lastPreset=null;  // last gauntlet/stage launch: "Play again" must re-launch it, not rebuild rules from a payloadless drill
@@ -61,9 +68,11 @@ async function refresh() {
   skillReviews=await listSkillReviews().catch(()=>[]);
   dailyPlanRecords=await listDailyPlans().catch(()=>[]);
   const p=benchmarkProgress(sessions);
-  const values=[p.personalBest??'—',p.recentMedian??'—',p.count,'70+'];
+  const prog=evaluateProgression(sessions);
+  const values=[p.personalBest??'—',p.recentMedian??'—',p.count,prog.stage.name,'70+'];
   $$('#top-metrics .metric strong').forEach((el,i)=>el.textContent=values[i]);
   renderDailyPlan();
+  renderLadderPanel(prog);
   renderAnalytics();
   renderReviewQueue();
   renderGauntlet();
@@ -100,6 +109,61 @@ function renderDailyPlan() {
     await saveDailyPlan(planRecordFrom(updated,{dateKey:todayKey,targetMinutes:plan.targetMinutes,updatedAt:new Date().toISOString()})).catch(()=>{});
     setPlanProgress(completedMinutes(updated));
   }));
+}
+
+// Skill Progression Ladder (F35, M3 close-out): explicit 30→40→50→60→70+ milestone tiers
+function renderLadderPanel(prog) {
+  const root = $('#ladder-panel'); if (!root) return;
+  const p = prog ?? evaluateProgression(sessions);
+  const isBaseline = p.status === 'establishing-baseline';
+  const currentStage = p.stage;
+  const nextStage = p.nextStage;
+
+  const trackHtml = PROGRESSION_STAGES.map(s => {
+    const isCurrent = s.id === currentStage.id;
+    const isDone = s.level < currentStage.level;
+    const cls = isCurrent ? ' active' : (isDone ? ' completed' : '');
+    return `<div class="ladder-step${cls}">
+      <span class="ladder-step-num">STAGE ${s.level} · ${isDone ? '✓ ' : ''}${esc(s.name.toUpperCase())}</span>
+      <span class="ladder-step-title">${s.targetScore >= 70 ? '70+ Target' : `${s.minScore}–${s.targetScore} pts`}</span>
+      <span class="ladder-step-range">${esc(s.focus)}</span>
+    </div>`;
+  }).join('');
+
+  const progressTitle = isBaseline
+    ? `Establishing benchmark baseline: ${p.benchmarkCount} of ${p.minRunsNeeded} standard runs recorded (${p.runsRemaining} more needed)`
+    : `${currentStage.name} tier (level ${currentStage.level}/5): rolling median ${p.medianScore.toFixed(1)} · ${p.progressPct}% complete within stage${nextStage ? ` (${p.pointsToNext.toFixed(1)} pts to ${nextStage.name})` : ''}`;
+
+  const barPct = isBaseline
+    ? Math.round((p.benchmarkCount / p.minRunsNeeded) * 100)
+    : p.progressPct;
+
+  const masteryStatus = p.mastery70Met
+    ? '<strong>8-of-10 consistency goal met!</strong> Full 70+ mastery unlocked.'
+    : (p.stage.id === 'mastery'
+      ? `Mastery tier active: ${p.consistency?.hits ?? 0} of ${p.consistency?.windowRuns ?? 0} recent standard runs at 70+ (needs 8 of 10).`
+      : '');
+
+  root.innerHTML = `<div class="section-header">
+    <div>
+      <div class="eyebrow">SKILL PROGRESSION LADDER · F35</div>
+      <h2 class="section-title">Progression tier: ${esc(currentStage.name)}</h2>
+    </div>
+    <span class="tag">${isBaseline ? `${p.runsRemaining} RUNS TO BASELINE` : `TIER ${currentStage.level} OF 5`}</span>
+  </div>
+  <div class="ladder-track">${trackHtml}</div>
+  <div class="ladder-bar"><div style="width:${barPct}%"></div></div>
+  <p class="secondary">${esc(progressTitle)}</p>
+  ${masteryStatus ? `<p class="secondary">${masteryStatus}</p>` : ''}
+  <div class="ladder-card" style="margin-top:12px">
+    <div class="ladder-card-head">
+      <span class="ladder-card-title">Stage focus: ${esc(currentStage.focus)}</span>
+      <span class="ladder-badge active">${esc(currentStage.name)} Focus</span>
+    </div>
+    <p class="secondary" style="margin:4px 0">${esc(currentStage.description)}</p>
+    <p class="small muted">Key training focuses: ${esc(currentStage.recommendedActions.join(' · '))}</p>
+  </div>
+  <p class="small muted" style="margin-top:10px">Evaluated strictly from verified standard 120-second benchmarks (gated at >= 3 runs). Practice, drills, and unverified runs never alter ladder standing.</p>`;
 }
 
 // Weakness gauntlet (F32): select weakest gated cells → tier-aware drill per cell → same-family
@@ -299,19 +363,50 @@ function startGame({ replay=null, drill=null, preset=null }={}) {
   } else if(preset) generator=gauntletGenerator(preset,currentSeed);
   else generator=createGenerator(rules,currentSeed,weights);
   currentMode=mode; currentReplay=replay; currentDrill=drill;
+  // Ghost racing (F33): enable cumulative pace comparison during replay and practice against personal-best benchmark
+  const isPracticeOrReplay=Boolean(replay || drill || preset || mode!=='benchmark');
+  if(isPracticeOrReplay){
+    const pbSession=selectPersonalBestBenchmark(sessions);
+    activeGhostTrajectory=pbSession?buildGhostTrajectory(pbSession):null;
+  } else {
+    activeGhostTrajectory=null;
+  }
   currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.cell??drill.id??drill.key,label:drill.label,tier:drill.tier??DEFAULT_DRILL_TIER,stage:drill.stage}:null});
   currentSession.start();
   $('#idle-layout').classList.add('hidden');$('#top-metrics').classList.add('hidden');$('#results').classList.add('hidden');$('#game').classList.remove('hidden');
   $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':mode==='drill'?(drill?.stage==='probe'?`TRANSFER PROBE · ${rules.label} · PRACTICE`:drill?.stage==='flash'?`FLASH · ${rules.label} · PRACTICE`:`DRILL · ${rules.label} · PRACTICE`):`${mode.toUpperCase()} PRACTICE`;
   $('#game-score').innerHTML='0 <small>correct</small>';
   $('#answer').value='';
+  renderGhostPace();
   updateQuestion(); renderTick(); clearInterval(tick); tick=setInterval(renderTick,60);
   $('#answer').focus();
+}
+function renderGhostPace(remainingMs) {
+  const ghostEl=$('#ghost-pace');
+  if(!activeGhostTrajectory || currentSession?.state!=='active') {
+    if(ghostEl)ghostEl.classList.add('hidden');
+    return;
+  }
+  if(ghostEl)ghostEl.classList.remove('hidden');
+  const durationMs=currentSession.rules.durationSeconds*1000;
+  const rem=remainingMs ?? (currentSession?currentSession.remainingMs():durationMs);
+  const elapsedMs=Math.max(0,durationMs-rem);
+  const pace=compareGhostPace(currentSession.score,elapsedMs,activeGhostTrajectory);
+  if(!pace)return;
+  const badge=$('#ghost-badge'), stats=$('#ghost-stats'), delta=$('#ghost-delta');
+  if(badge)badge.textContent=`👻 PB GHOST (${activeGhostTrajectory.finalScore})`;
+  if(stats)stats.textContent=`Ghost: ${pace.ghostScore} · Live: ${pace.currentScore} · Proj: ${pace.projectedFinal}`;
+  if(delta){
+    const sign=pace.delta>0?'+':'';
+    delta.textContent=pace.status==='tied'?'±0 tied':`${sign}${pace.delta} ${pace.status}`;
+    delta.className=`ghost-delta ghost-${pace.status}`;
+  }
 }
 function updateQuestion() {
   const q=currentSession.current;
   $('#problem').textContent=`${q.left} ${q.symbol} ${q.right}`;
   $('#game-score').innerHTML=`${currentSession.score} <small>correct</small>`;
+  renderGhostPace();
 }
 function renderTick() {
   if(currentSession?.state!=='active')return;
@@ -320,6 +415,7 @@ function renderTick() {
   if(currentSession.consumeExpiry()){$('#answer').value='';updateQuestion();}
   $('#timer').textContent=durationFormat(ms);
   $('#time-fill').style.width=(100*ms/(currentSession.rules.durationSeconds*1000)).toFixed(2)+'%';
+  renderGhostPace(ms);
   if(currentSession.state==='finished')finishGame(false);
 }
 function answerInput(event) {
@@ -355,7 +451,14 @@ async function finishGame(endedEarly) {
   const stats=sessionStats(result);
   const typology=errorTypology(result.events);
   const hidden=result.integrity?.hiddenMs>0?` · tab hidden ${fmt(result.integrity.hiddenMs)} (clock kept running)`:'';
-  $('#result-detail').innerHTML=`<p class="secondary">${result.events.length} solved${result.missedCount?` · ${result.missedCount} missed the per-question flash cap`:''} · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}${hidden}</p>${typologyHtml(typology)}${drillReviewLine(drillReview)}`;
+  let ghostLine='';
+  if(activeGhostTrajectory){
+    const ghostFinal=activeGhostTrajectory.finalScore;
+    const diff=result.score-ghostFinal;
+    const diffText=diff>0?`+${diff} ahead of PB`:diff<0?`${diff} behind PB`:'tied with PB';
+    ghostLine=`<p class="secondary ghost-finish">👻 Ghost pace comparison: finished at ${result.score} vs Personal Best ${ghostFinal} (${diffText}). Zero benchmark contamination.</p>`;
+  }
+  $('#result-detail').innerHTML=`<p class="secondary">${result.events.length} solved${result.missedCount?` · ${result.missedCount} missed the per-question flash cap`:''} · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}${hidden}</p>${ghostLine}${typologyHtml(typology)}${drillReviewLine(drillReview)}`;
   await refresh();
 }
 /**
@@ -404,7 +507,7 @@ function typologyHtml(t){
   if(!t.total)return '';
   return `<div class="breakdown typology" aria-label="Entry quality">${t.types.map(x=>`<div class="breakdown-row"><span>${ERROR_LABELS[x.type]}</span><div class="bar"><div style="width:${(100*(x.share??0)).toFixed(1)}%"></div></div><span>${x.count} <span class="muted">· ${fmt(x.medianMs)}</span></span></div>`).join('')}</div><p class="small muted">Counts of solved questions by entry pattern, with median solve time. Derived from keystroke telemetry; slips and revisions cost time but never cost points.</p>`;
 }
-function showIdle(){if(currentSession?.state==='active')return;$('#idle-layout').classList.remove('hidden');$('#top-metrics').classList.remove('hidden');$('#game').classList.add('hidden');$('#results').classList.add('hidden');}
+function showIdle(){if(currentSession?.state==='active')return;$('#idle-layout').classList.remove('hidden');$('#top-metrics').classList.remove('hidden');$('#game').classList.add('hidden');$('#results').classList.add('hidden');activeGhostTrajectory=null;}
 function renderAnalytics(){
   const allEvents=sessions.flatMap(s=>s.events??[]), ops=operationSummary(allEvents), diagnostics=diagnose(sessions);
   const worst=diagnostics.weaknesses.filter(w=>w.kind==='operation' && w.count>=5).slice(0,2);
@@ -412,6 +515,8 @@ function renderAnalytics(){
   const maxTime=Math.max(5000,...ops.map(x=>x.medianMs??0));
   $('#analytics-root').innerHTML=`
     <section class="panel" id="consistency-root" aria-labelledby="consistency-title"></section>
+    <section class="panel" id="progression-root" aria-labelledby="progression-title"></section>
+    <section class="panel" id="forecast-root" aria-labelledby="forecast-title"></section>
     <section class="panel" id="pace-root" aria-labelledby="pace-title"></section>
     <section class="panel" id="entry-root" aria-labelledby="entry-title"></section>
     <section class="panel" id="heatmap-root" aria-labelledby="heatmap-title"></section>
@@ -421,6 +526,8 @@ function renderAnalytics(){
     <div class="panel"><h2 class="section-title">Recent sessions</h2>${recent.length?recent.map(s=>`<div class="history-row"><span>${esc(new Date(s.startedAt).toLocaleString())} · ${esc(s.mode)}${s.benchmark?' · verified':''}</span><strong>${esc(s.score)}</strong><span>${s.benchmark?'Standard':'Practice'}</span></div>`).join(''):'<div class="empty">Your first session will appear here.</div>'}</div>
     <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" accept="application/json" hidden></div><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
   renderConsistency();
+  renderProgression();
+  renderForecast();
   renderPace();
   renderEntry();
   renderHeatmap();
@@ -516,6 +623,101 @@ function histogramSection(hist){
   const cutNote=hist.tailShare===hist.slowShare?'also matches the slow-question share above, because the robust cutoff sits exactly at ×2':hist.cutoffOnEdge?'a little larger than the slow-question share above when solves land exactly on the ×2 edge — the bins count them, the strict slow rule does not':'smaller than this share when the robust slow-question cutoff moves past ×2, which the tiles above report';
   return `${head}<table class="mini-table hist-table" aria-label="Histogram of operation-adjusted relative solve times pooled across standard runs"><thead><tr><th scope="col">Bin</th><th scope="col">Share of solves</th><th scope="col">Solves</th></tr></thead><tbody>${rows}</tbody></table>${movement}<p class="small muted">Fixed bins: below ×0.5, ×0.5–0.75, ×0.75–1, ×1–1.5, ×1.5–2, ×2–3, ≥×3; each ratio lands in the bin whose lower edge it reaches. Bars scale to the largest bin; every row shows its exact count and share. Solves at least twice your typical operation time (tail, orange): ${esc(tailPct)}, ${esc(cutNote)}.${hist.engine1?` ${hist.engine1} solves from old engine-1 records use an estimated start time.`:''} Definitions and edge rules: docs/FATIGUE.md.</p>`;
 }
+
+function renderProgression() {
+  const root = $("#progression-root"); if (!root) return;
+  const p = evaluateProgression(sessions);
+  const tile = (label, value, note) => `<div class="metric"><span>${label}</span><strong>${value}</strong><small class="tile-note">${note}</small></div>`;
+
+  const tiles = `<div class="stat-grid consistency-tiles">
+    ${tile("CURRENT TIER", `${p.stage.name} (L${p.stage.level})`, `${p.stage.minScore}–${p.stage.targetScore} pts threshold`)}
+    ${tile("ROLLING MEDIAN", p.medianScore !== null ? p.medianScore.toFixed(1) : "—", p.status === "active" ? `Last ${p.windowRuns} standard runs` : `${p.benchmarkCount}/${p.minRunsNeeded} runs to baseline`)}
+    ${tile("TO NEXT STAGE", p.pointsToNext !== null ? (p.pointsToNext === 0 ? "Max tier" : `${p.pointsToNext.toFixed(1)} pts`) : "—", p.nextStage ? `Target ${p.stage.targetScore} for ${p.nextStage.name}` : "Mastery achieved")}
+    ${tile("MASTERY GOAL", p.mastery70Met ? "Unlocked" : (p.consistency ? `${p.consistency.hits} / ${p.consistency.windowRuns}` : "0 / 10"), "8 of 10 runs ≥ 70")}
+  </div>`;
+
+  const cards = PROGRESSION_STAGES.map(s => {
+    const isCurrent = s.id === p.stage.id;
+    const isDone = s.level < p.stage.level;
+    const badge = isCurrent ? '<span class="ladder-badge active">CURRENT TIER</span>' : (isDone ? '<span class="ladder-badge done">PASSED</span>' : '<span class="ladder-badge next">UPCOMING</span>');
+    return `<div class="ladder-card${isCurrent ? " active" : ""}">
+      <div class="ladder-card-head">
+        <span class="ladder-card-title">Stage ${s.level}: ${esc(s.name)} (${s.minScore}–${s.targetScore} pts)</span>
+        ${badge}
+      </div>
+      <p class="secondary" style="margin:4px 0"><strong>${esc(s.focus)}</strong> — ${esc(s.description)}</p>
+      <p class="small muted">Recommended actions: ${esc(s.recommendedActions.join(", "))}</p>
+    </div>`;
+  }).join("");
+
+  root.innerHTML = `<div class="section-header">
+    <div>
+      <div class="eyebrow">SKILL PROGRESSION LADDER · STANDARD BENCHMARKS ONLY</div>
+      <h2 class="section-title" id="progression-title">Milestone progression ladder</h2>
+    </div>
+    <span class="tag">TIER ${p.stage.level}: ${esc(p.stage.name.toUpperCase())}</span>
+  </div>
+  ${tiles}
+  <p class="secondary">${esc(p.note)}</p>
+  <div class="ladder-grid">${cards}</div>
+  <p class="small muted">Progression is governed by your rolling median across standard benchmark sessions (window: 10 runs, gated at >= 3 runs). Practice modes, drills, and isolation sessions do not affect ladder placement.</p>`;
+}
+
+function renderForecast() {
+  const root = $("#forecast-root"); if (!root) return;
+  const f = forecastProgress(sessions, { horizon: DEFAULT_FORECAST_HORIZON, confidence: 0.80 });
+  const tile = (label, value, note) => `<div class="metric"><span>${label}</span><strong>${value}</strong><small class="tile-note">${note}</small></div>`;
+
+  if (f.abstain) {
+    root.innerHTML = `<div class="section-header">
+      <div>
+        <div class="eyebrow">LONGITUDINAL FORECASTING · F37</div>
+        <h2 class="section-title" id="forecast-title">Progress forecast & prediction intervals</h2>
+      </div>
+      <span class="tag">SAMPLE GATE (${f.benchmarkCount}/${f.minRunsNeeded})</span>
+    </div>
+    <div class="stat-grid consistency-tiles">
+      ${tile("STANDARD RUNS", `${f.benchmarkCount} / ${f.minRunsNeeded}`, `Needs ${f.minRunsNeeded - f.benchmarkCount} more to unlock`)}
+      ${tile("CURRENT MEDIAN", f.currentMedian !== null ? f.currentMedian.toFixed(1) : "—", "Verified benchmark scope")}
+      ${tile("PROJECTION", "Abstaining", "Safeguard active")}
+      ${tile("GATE POLICY", `${MIN_FORECAST_RUNS} runs`, "Prevents spurious precision")}
+    </div>
+    <p class="secondary">${esc(f.reason)}</p>
+    <p class="small muted">${esc(f.limitation)} Calibrated projections use held-out rolling-origin cross-validation on verified benchmark series. Unverified and practice sessions are excluded.</p>`;
+    return;
+  }
+
+  const series = benchmarkSeries(sessions);
+  const tiles = `<div class="stat-grid consistency-tiles">
+    ${tile(`PROJECTED (+${f.horizonRuns} RUNS)`, `~${f.projectedScore}`, `${f.interval.lower}–${f.interval.upper} (${Math.round(f.interval.confidenceLevel * 100)}% interval)`)}
+    ${tile("THEIL-SEN SLOPE", `${f.slopePerRun >= 0 ? "+" : ""}${f.slopePerRun.toFixed(2)}<small> pts/run</small>`, "Pairwise median rate")}
+    ${tile("CV UNCERTAINTY", `±${f.calibration.mae.toFixed(1)} MAE`, `${f.calibration.crossValidatedRuns} rolling splits`)}
+    ${tile("BENCHMARK COUNT", `${f.benchmarkCount} runs`, `Median ${f.currentMedian.toFixed(1)} pts`)}
+  </div>`;
+
+  const legend = `<div class="chart-legend" aria-hidden="true">
+    <span><i class="key-dot"></i>Benchmark score</span>
+    <span><i class="key-forecast-line"></i>Theil–Sen projection</span>
+    <span><i class="key-forecast-band"></i>80% prediction interval</span>
+    <span><i class="key-target"></i>70 target</span>
+  </div>`;
+
+  const svg = forecastChartSvg(series, f, 70);
+
+  root.innerHTML = `<div class="section-header">
+    <div>
+      <div class="eyebrow">LONGITUDINAL FORECASTING · F37</div>
+      <h2 class="section-title" id="forecast-title">Progress forecast & prediction intervals</h2>
+    </div>
+    <span class="tag">CALIBRATED FORECAST</span>
+  </div>
+  ${tiles}
+  <p class="secondary">At your empirical rate of ${f.slopePerRun >= 0 ? "+" : ""}${f.slopePerRun.toFixed(2)} points per standard benchmark, projected performance in ${f.horizonRuns} runs is approximately <strong>${f.projectedScore} points</strong> with an 80% prediction interval of [${f.interval.lower}–${f.interval.upper}].</p>
+  ${legend}
+  <div class="chart-scroll"><div class="chart-wrap" tabindex="0" role="img" aria-label="${esc(`Progress forecast: projected score ${f.projectedScore} in ${f.horizonRuns} runs with interval ${f.interval.lower} to ${f.interval.upper}`)}">${svg}</div></div>
+  <p class="small muted">${esc(f.limitation)} Prediction intervals widen with horizon (${f.horizonRuns} runs) and calibrate from empirical cross-validation error across rolling origins.</p>`;
+}
+
 function renderPace(){
   const root=$('#pace-root'); if(!root)return;
   const pace=paceProfile(sessions), tail=tailProfile(sessions), hist=relativeHistogram(sessions), h=pace.halfShift;
@@ -547,6 +749,14 @@ const ENTRY_SHORT={clean:'Clean',revision:'Revised',slip:'Slip',calculation:'Cal
 function renderEntry(){
   const root=$('#entry-root'); if(!root)return;
   const q=entryQuality(sessions);
+  let calibLine='';
+  try {
+    const stored=localStorage.getItem('zetamaster-calibration');
+    if(stored){
+      const c=JSON.parse(stored);
+      calibLine=`<div class="subline-inline" style="margin:10px 0;padding:8px 12px;background:#152433;border-radius:8px;border:1px solid #283e54">Calibrated hardware overhead: <strong>${c.medianMs.toFixed(0)} ms</strong> median (${c.msPerDigit?`${c.msPerDigit} ms/digit, `:''}${Math.round(c.accuracy*100)}% accuracy). <button type="button" class="link-btn" id="recalib-link">Recalibrate ↗</button></div>`;
+    }
+  }catch{}
   const tile=(label,value,note)=>`<div class="metric"><span>${label}</span><strong>${value}</strong><small class="tile-note">${note}</small></div>`;
   const head=`<div class="section-header"><div><div class="eyebrow">ENTRY QUALITY · STANDARD BENCHMARKS ONLY</div><h2 class="section-title" id="entry-title">Entry quality across runs</h2></div><span class="tag">${q.runs} RUN${q.runs===1?'':'S'}</span></div>`;
   if(!q.runs){root.innerHTML=`${head}<p class="secondary">Complete standard 120-second benchmarks to unlock this panel. Practice sessions and drills are excluded so entry types stay comparable across runs.</p>`;return;}
@@ -580,7 +790,11 @@ function renderEntry(){
       <div><h3 class="subhead">By operation</h3><div class="chart-scroll">${opTable}</div><p class="small muted">Each cell is solved count with the median relative to that operation's clean-entry time; "low n" marks short samples.</p></div>
     </div>
     <details class="table-view"><summary>Show per-run calculation share</summary><table><thead><tr><th scope="col">Run</th><th scope="col">Solved</th><th scope="col">Calculation share</th><th scope="col">Time lost</th></tr></thead><tbody>${[...q.perRun].reverse().map(r=>`<tr><td>${r.run}</td><td>${r.solved}</td><td>${(100*r.calculation/Math.max(1,r.solved)).toFixed(1)}%</td><td>${fmt(r.lostMs)}</td></tr>`).join('')}</tbody></table></details>
+    ${calibLine}
+    <div style="margin:14px 0"><button type="button" class="secondary-btn" id="analytics-calibration">Hardware latency calibration ↗</button></div>
     ${notes}`;
+  $('#analytics-calibration')?.addEventListener('click',openCalibrationModal);
+  $('#recalib-link')?.addEventListener('click',openCalibrationModal);
 }
 function cellColor(c){
   if(c.count<MIN_CELL_SAMPLES||c.ratio===null)return 'transparent';
@@ -798,6 +1012,135 @@ function renderRoadmap(){
   ];
   $('#roadmap-root').innerHTML=`<div class="roadmap-grid">${phases.map(x=>`<article class="roadmap-card"><div class="eyebrow">${x.state}</div><h2>${x.title}</h2><p>${esc(x.description)}</p><ul>${x.items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul></article>`).join('')}</div><p class="secondary">All 55 proposed features have traceable IDs and acceptance criteria in <code>specs/features.json</code> and <code>docs/FEATURE_MATRIX.md</code>. Detailed agent execution plan: <code>docs/MILESTONES.md</code>.</p>`;
 }
+// Hardware calibration modal (F40, M4)
+function openCalibrationModal() {
+  calibState = {
+    step: 'intro',
+    trials: [],
+    index: 0,
+    trialStartedAt: 0,
+    results: [],
+  };
+  renderCalibrationModal();
+  const modal = $('#calibration-modal');
+  if (modal?.showModal) modal.showModal();
+}
+
+function closeCalibrationModal() {
+  const modal = $('#calibration-modal');
+  if (modal?.close) modal.close();
+}
+
+function startCalibrationTrials() {
+  const seed = crypto.randomUUID();
+  calibState.trials = generateCopyTrials(seed, 10);
+  calibState.index = 0;
+  calibState.results = [];
+  calibState.step = 'trial';
+  renderCalibrationModal();
+  focusCalibrationInput();
+}
+
+function focusCalibrationInput() {
+  calibState.trialStartedAt = performance.now();
+  const input = $('#calib-input');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+}
+
+function submitCalibrationTrial(typedValue) {
+  if (calibState.step !== 'trial') return;
+  const currentTrial = calibState.trials[calibState.index];
+  if (!currentTrial) return;
+  const elapsedMs = Math.max(0, performance.now() - calibState.trialStartedAt);
+  const evalResult = evaluateCopyTrial(currentTrial, typedValue, elapsedMs);
+  calibState.results.push(evalResult);
+
+  calibState.index++;
+  if (calibState.index >= calibState.trials.length) {
+    calibState.step = 'results';
+    renderCalibrationModal();
+  } else {
+    renderCalibrationModal();
+    focusCalibrationInput();
+  }
+}
+
+function renderCalibrationModal() {
+  const body = $('#calib-body');
+  if (!body) return;
+
+  if (calibState.step === 'intro') {
+    let prevText = '';
+    try {
+      const stored = localStorage.getItem('zetamaster-calibration');
+      if (stored) {
+        const p = JSON.parse(stored);
+        prevText = `<p class="secondary" style="margin-top:10px">Saved calibration: <strong>${p.medianMs.toFixed(0)} ms</strong> median latency · ${p.msPerDigit ? `${p.msPerDigit} ms/digit · ` : ''}${Math.round(p.accuracy * 100)}% accuracy (${p.sampleSize} trials).</p>`;
+      }
+    } catch {}
+
+    body.innerHTML = `
+      <p class="secondary">Isolate keyboard and motor latency from mental calculation time. You will copy 10 random numbers (1 to 4 digits) matching arithmetic answer profiles as fast as you can.</p>
+      ${prevText}
+      <p class="small muted">Answers submit automatically when correct, or press Enter. Each trial measures raw entry speed from prompt display to completion.</p>
+      <div class="calib-btn-row">
+        <button type="button" class="primary-btn" id="calib-start-btn">Start calibration (10 trials) ↗</button>
+      </div>
+    `;
+    $('#calib-start-btn')?.addEventListener('click', startCalibrationTrials);
+  } else if (calibState.step === 'trial') {
+    const trial = calibState.trials[calibState.index];
+    body.innerHTML = `
+      <div class="calib-meta">Trial ${calibState.index + 1} of ${calibState.trials.length} · ${trial.digits} digit${trial.digits === 1 ? '' : 's'}</div>
+      <div class="calib-prompt" id="calib-prompt-text">${esc(trial.prompt)}</div>
+      <input type="text" id="calib-input" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="Copy number" pattern="[0-9]*" autofocus>
+      <p class="small muted" style="text-align:center">Type the exact digits shown above. Submits automatically when complete.</p>
+    `;
+    const input = $('#calib-input');
+    if (input) {
+      input.addEventListener('input', e => {
+        if (e.target.value.trim() === trial.expected) {
+          submitCalibrationTrial(e.target.value);
+        }
+      });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitCalibrationTrial(input.value);
+        }
+      });
+    }
+  } else if (calibState.step === 'results') {
+    const diag = computeHardwareDiagnostics(calibState.results);
+    if (diag) {
+      try {
+        localStorage.setItem('zetamaster-calibration', JSON.stringify(diag));
+      } catch {}
+    }
+    const tile = (label, value, note) => `<div class="metric"><span>${label}</span><strong>${value}</strong><small class="tile-note">${note}</small></div>`;
+    body.innerHTML = `
+      <div class="stat-grid consistency-tiles" style="margin-top:10px">
+        ${tile('MEDIAN LATENCY', diag ? `${diag.medianMs.toFixed(0)} ms` : '—', 'Hardware typing overhead')}
+        ${tile('SPREAD (P10–P90)', diag ? `${diag.p10Ms.toFixed(0)}–${diag.p90Ms.toFixed(0)} ms` : '—', 'Execution consistency')}
+        ${tile('ENTRY RATE', diag && diag.msPerDigit ? `${diag.msPerDigit} ms/digit` : '—', 'Per-character speed')}
+        ${tile('ACCURACY', diag ? `${Math.round(diag.accuracy * 100)}%` : '—', `${diag?.correctCount ?? 0} / ${diag?.sampleSize ?? 0} correct`)}
+      </div>
+      <p class="secondary">Your measured keyboard overhead is approximately <strong>${diag?.medianMs.toFixed(0) ?? '—'} ms</strong> per number. This baseline isolates motor entry from cognitive calculation time.</p>
+      <p class="small muted">${esc(diag?.limitation ?? '')}</p>
+      <div class="calib-btn-row">
+        <button type="button" class="secondary-btn" id="calib-retry-btn">Recalibrate ↗</button>
+        <button type="button" class="primary-btn" id="calib-done-btn">Done</button>
+      </div>
+    `;
+    $('#calib-retry-btn')?.addEventListener('click', startCalibrationTrials);
+    $('#calib-done-btn')?.addEventListener('click', closeCalibrationModal);
+    renderEntry();
+  }
+}
+
 function bind(){
   $$('.nav-link').forEach(btn=>btn.addEventListener('click',()=>setView(btn.dataset.view)));
   $('#brand').addEventListener('click',e=>{e.preventDefault();setView('train');});
@@ -814,6 +1157,9 @@ function bind(){
     else startGame({replay:currentReplay,drill:currentDrill});
   });
   $('#analyze-result').addEventListener('click',()=>{showIdle();setView('analytics');});
+  $('#open-calibration')?.addEventListener('click',openCalibrationModal);
+  $('#calib-close')?.addEventListener('click',closeCalibrationModal);
+  $('#calibration-modal')?.addEventListener('cancel',closeCalibrationModal);
   $$('#lesson-filters button').forEach(button=>button.addEventListener('click',()=>{$$('#lesson-filters button').forEach(b=>b.classList.toggle('selected',b===button));renderLessons(button.dataset.op);}));
 }
 bind();updateMode();renderLessons();renderRoadmap();applyHeatmapHash();refresh().catch(error=>console.error('History loading failed',error));

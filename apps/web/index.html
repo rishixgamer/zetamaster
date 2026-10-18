@@ -17,23 +17,29 @@
     <main id="main">
       <section class="view active" id="view-train" aria-label="Train">
         <div class="hero"><div><div class="eyebrow">PRECISION TRAINING · 120 SECOND BENCHMARK</div><h1>Think faster.<br><span>Calculate smarter.</span></h1><p>From 30 to 70+. Identify arithmetic bottlenecks, target what matters, and track real progress.</p></div><div class="target-box"><div class="target-label">YOUR TARGET</div><div class="target-big">70<span>+</span></div><div class="target-note">Consistent standard score</div></div></div>
-        <div class="metrics" id="top-metrics"><div class="metric"><span>PERSONAL BEST</span><strong>—</strong></div><div class="metric"><span>RECENT MEDIAN</span><strong>—</strong></div><div class="metric"><span>STANDARD RUNS</span><strong>0</strong></div><div class="metric"><span>GOAL</span><strong>70+</strong></div></div>
+        <div class="metrics" id="top-metrics"><div class="metric"><span>PERSONAL BEST</span><strong>—</strong></div><div class="metric"><span>RECENT MEDIAN</span><strong>—</strong></div><div class="metric"><span>STANDARD RUNS</span><strong>0</strong></div><div class="metric"><span>LADDER TIER</span><strong>—</strong></div><div class="metric"><span>GOAL</span><strong>70+</strong></div></div>
         <div id="idle-layout" class="content-grid">
           <section class="panel setup"><div class="section-header"><div><div class="eyebrow">SESSION SETUP</div><h2>Start training</h2></div><span class="tag">READY</span></div>
             <label class="field"><span>TRAINING MODE</span><select id="mode"><option value="benchmark">Classic Zetamac · Standard</option><option value="adaptive">Adaptive · Train my weaknesses</option><option value="custom">Custom · Choose operations</option><option value="isolation">Operation isolation</option><option value="sprint">Speed interval · 30s</option><option value="endurance">Endurance · 300s</option></select></label>
             <div class="field-row"><label class="field"><span>TIME LIMIT</span><select id="duration"><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option><option value="120" selected>120 seconds</option><option value="180">180 seconds</option><option value="300">300 seconds</option><option value="600">600 seconds</option></select></label><label class="field"><span>SEED (OPTIONAL)</span><input id="seed" autocomplete="off" placeholder="Random by default" maxlength="70"></label></div>
             <div class="field"><span>OPERATIONS <small>Custom/isolation only</small></span><div class="operation-switches" id="ops"><label><input type="checkbox" value="add" checked> + Add</label><label><input type="checkbox" value="sub" checked> − Subtract</label><label><input type="checkbox" value="mul" checked> × Multiply</label><label><input type="checkbox" value="div" checked> ÷ Divide</label></div></div>
             <p class="notice" id="mode-hint">Strict 120-second benchmark. All four operations, default ranges, no skips.</p>
-            <button class="primary-btn" id="start" type="button">Start session <span aria-hidden="true">↗</span></button>
+            <div class="setup-actions">
+              <button class="primary-btn" id="start" type="button">Start session <span aria-hidden="true">↗</span></button>
+              <button class="secondary-btn" id="open-calibration" type="button">Hardware calibration ↗</button>
+            </div>
             <div class="subline">No login · Zero dependencies · Works offline after first visit</div>
           </section>
           <section class="panel plan"><div class="section-header"><div><div class="eyebrow">PERSONALIZED ROUTINE</div><h2>Your daily plan</h2></div><span class="tiny">15 MIN</span></div><p class="secondary" id="plan-rationale">Complete a benchmark to unlock personalized recommendations.</p><div id="plan-steps" class="steps"></div><p class="small muted" id="plan-progress">Today: 0 / 15 min logged</p><button class="secondary-btn" id="adaptive-quick" type="button">Train my weaknesses →</button></section>
+          <section class="panel ladder-panel" id="ladder-panel" aria-label="Skill progression ladder"></section>
           <section class="panel review-panel" id="review-panel" aria-label="Due pattern reviews"></section>
           <section class="panel gauntlet-panel" id="gauntlet-panel" aria-label="Weakness gauntlet"></section>
           <section class="panel intervals-panel" id="intervals-panel" aria-label="Speed intervals"></section>
           <section class="panel recs-panel" id="recs-panel" aria-label="Progress-based recommendations"></section>
         </div>
-        <section class="panel game hidden" id="game" aria-label="Live arithmetic game"><div class="game-top"><div><div class="eyebrow" id="game-mode">STANDARD BENCHMARK</div><div class="game-score" id="game-score">0 <small>correct</small></div></div><div class="timer-container"><div class="timer" id="timer">2:00</div><div class="timer-caption">REMAINING</div></div></div><div class="time-track"><div id="time-fill"></div></div><div class="problem" id="problem" aria-live="polite">—</div><label class="sr-only" for="answer">Type your answer</label><input id="answer" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="Your answer" aria-label="Enter your answer" pattern="[0-9]*"><div class="game-foot"><span>Answers submit automatically when correct</span><button class="text-btn" id="finish" type="button">End session</button></div></section>
+        <section class="panel game hidden" id="game" aria-label="Live arithmetic game"><div class="game-top"><div><div class="eyebrow" id="game-mode">STANDARD BENCHMARK</div><div class="game-score" id="game-score">0 <small>correct</small></div></div><div class="timer-container"><div class="timer" id="timer">2:00</div><div class="timer-caption">REMAINING</div></div></div>
+          <div class="ghost-pace hidden" id="ghost-pace" aria-label="Personal-best ghost pace"><div class="ghost-bar"><span class="ghost-badge" id="ghost-badge">👻 PB GHOST</span><span class="ghost-stats" id="ghost-stats">Ghost: 0 · Live: 0 · Proj: 0</span><span class="ghost-delta" id="ghost-delta">±0 tied</span></div></div>
+          <div class="time-track"><div id="time-fill"></div></div><div class="problem" id="problem" aria-live="polite">—</div><label class="sr-only" for="answer">Type your answer</label><input id="answer" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="Your answer" aria-label="Enter your answer" pattern="[0-9]*"><div class="game-foot"><span>Answers submit automatically when correct</span><button class="text-btn" id="finish" type="button">End session</button></div></section>
         <section class="panel hidden" id="results" aria-live="polite"><div class="eyebrow">SESSION COMPLETE</div><h2 id="result-title">Your results</h2><div class="result-score" id="result-score">—</div><div id="result-detail"></div><div class="button-row"><button type="button" id="again" class="primary-btn">Play again ↗</button><button type="button" id="analyze-result" class="secondary-btn">View analytics →</button></div></section>
       </section>
       <section class="view" id="view-analytics" aria-label="Analytics"><div class="page-heading"><div class="eyebrow">PROGRESS INTELLIGENCE</div><h1>Performance analytics</h1><p>Standard benchmarks and training sessions remain separate. Recommendations use local session data.</p></div><div id="analytics-root"></div></section>
@@ -42,5 +48,19 @@
     </main>
     <footer class="footer"><span>ZETAMASTER · OPEN-SOURCE STARTER</span><span>Private by default. Not affiliated with the original Zetamac.</span></footer>
   </div>
+
+  <dialog class="modal calibration-modal" id="calibration-modal" aria-labelledby="calib-title">
+    <div class="modal-card">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">HARDWARE & KEYBOARD CALIBRATION · F40</div>
+          <h2 class="section-title" id="calib-title">Input latency calibration</h2>
+        </div>
+        <button type="button" class="close-btn" id="calib-close" aria-label="Close modal">×</button>
+      </div>
+      <div id="calib-body"></div>
+    </div>
+  </dialog>
+
   <script type="module" src="/apps/web/src/main.js"></script>
 </body></html>

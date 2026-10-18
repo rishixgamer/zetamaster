@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { benchmarkSeries, rollingBands, goalStatus, trend, consistencySummary, GOAL } from '../packages/analytics/src/consistency.js';
 import { benchmarkProgress } from '../packages/analytics/src/progress.js';
 import { createRng } from '../packages/core/src/rng.js';
-import { scoreChartSvg, yDomain, chartLayout, nearestIndex, CHART } from '../apps/web/src/score-chart.js';
+import { scoreChartSvg, forecastChartSvg, forecastChartLayout, yDomain, chartLayout, nearestIndex, CHART } from '../apps/web/src/score-chart.js';
 
 const run = (score, day, benchmark = true, mode = benchmark ? 'benchmark' : 'custom') => ({ score, benchmark, mode, startedAt: new Date(Date.UTC(2026, 0, day)).toISOString(), events: [] });
 
@@ -84,6 +84,29 @@ test('chart geometry contains every score and the target', () => {
   const single = scoreChartSvg(consistencySummary([run(42, 1)]).series, 70);
   assert.equal((single.match(/<circle /g) || []).length, 1);
   assert.ok(!/NaN|undefined/.test(single));
+});
+
+test('forecast chart geometry contains historical runs, projected score and prediction fan', async () => {
+  const { forecastProgress } = await import('../packages/analytics/src/forecasting.js');
+  const sessions = [30, 32, 34, 36, 38, 40, 42, 44, 46, 48].map((score, i) => run(score, i + 1));
+  const series = benchmarkSeries(sessions);
+  const forecast = forecastProgress(sessions, { horizon: 10 });
+  assert.equal(forecast.abstain, false);
+
+  const L = forecastChartLayout(series, forecast, 70);
+  assert.ok(L.shown.length >= 8);
+  assert.ok(L.horizonX > L.xs.at(-1));
+
+  const svg = forecastChartSvg(series, forecast, 70);
+  assert.ok(svg.includes('forecast-chart'));
+  assert.ok(svg.includes('polygon')); // prediction interval fan
+  assert.ok(svg.includes('+10 runs'));
+  assert.ok(svg.includes('70 target'));
+  assert.ok(!/NaN|undefined/.test(svg));
+
+  // Abstaining forecast returns empty svg
+  const emptySvg = forecastChartSvg(series, { abstain: true });
+  assert.equal(emptySvg, '');
 });
 
 test('operation summaries carry a median CI once samples allow', async () => {
