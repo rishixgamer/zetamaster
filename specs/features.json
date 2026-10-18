@@ -257,7 +257,7 @@
    "status": "partial",
    "owner": "training",
    "acceptance": [
-    "Priority inputs are implemented and ranked: candidatePriority (planner.js) plus impactCandidates rows from verified benchmark scope only (cell rows sample-gated with shrunken ratio > 1, op rows stated against the weighted cross-operation median), merged into one evidence-quoted recommendation list (recommendations.js) and compared across three feature-flagged concentration policies (policies.js: summed projected impact, seeded balanced A/B emphasis via assignStrategyTrial, allow-listed flag override, ranking deterministic with explicit tie-breaks); still partial: predicted-versus-observed TRAINING-gain calibration needs recorded treatment runs \u2014 nothing tracks which policy produced a run, so comparePolicies explicitly disclaims any claim that one policy beats another (M4/F37)"
+    "Priority inputs are implemented and ranked: candidatePriority (planner.js) plus impactCandidates rows from verified benchmark scope only (cell rows sample-gated with shrunken ratio > 1, op rows stated against the weighted cross-operation median), merged into one evidence-quoted recommendation list (recommendations.js) and compared across three feature-flagged concentration policies (policies.js: summed projected impact, seeded balanced A/B emphasis via assignStrategyTrial, allow-listed flag override, ranking deterministic with explicit tie-breaks); still partial: predicted-versus-observed TRAINING-gain calibration needs recorded treatment runs — nothing tracks which policy produced a run, so comparePolicies explicitly disclaims any claim that one policy beats another (M4/F37)"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -269,7 +269,7 @@
    "status": "implemented",
    "owner": "training",
    "acceptance": [
-    "Conservative detectPlateau signal (analytics, pinned 12-run split) stays the only *status*; on top of it the daily plan selects deterministically between three pre-named intervention branches from record evidence (packages/training/src/plateau.js plateauBranch): 'gauntlet-rotate' when a stable weak skill-cell pattern exists (>= 8 solves with shrunken ratio > 1), 'method-work' when a diagnosed slow operation/tag (>= 5 solves) exists but no reliable cell does, 'consistency-rest' when nothing is diagnosable; the branch rides the plan as {name, why, actions} with the evidence quoted in 'why', improving or insufficient-data histories get no branch, and the UI labels it a hypothesis to test, not a proven treatment; tests pin branch selection on flat/improving/thin histories with synthetic slow-vs-baseline fixtures; explicit out-of-scope: any causal or efficacy claim \u2014 before/after comparisons must pin the same windows, and causal evidence requires the M4 A/B machinery (F37)"
+    "Conservative detectPlateau signal (analytics, pinned 12-run split) stays the only *status*; on top of it the daily plan selects deterministically between three pre-named intervention branches from record evidence (packages/training/src/plateau.js plateauBranch): 'gauntlet-rotate' when a stable weak skill-cell pattern exists (>= 8 solves with shrunken ratio > 1), 'method-work' when a diagnosed slow operation/tag (>= 5 solves) exists but no reliable cell does, 'consistency-rest' when nothing is diagnosable; the branch rides the plan as {name, why, actions} with the evidence quoted in 'why', improving or insufficient-data histories get no branch, and the UI labels it a hypothesis to test, not a proven treatment; tests pin branch selection on flat/improving/thin histories with synthetic slow-vs-baseline fixtures; explicit out-of-scope: any causal or efficacy claim — before/after comparisons must pin the same windows, and causal evidence requires the M4 A/B machinery (F37)"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -408,10 +408,10 @@
    "id": "F33",
    "area": "Modes",
    "title": "Personal-best ghost racing",
-   "status": "planned",
+   "status": "implemented",
    "owner": "web/analytics",
    "acceptance": [
-    "Optional cumulative pace visualization derived from stored benchmark run"
+    "Optional cumulative pace visualization derived from stored benchmark run (packages/analytics/src/ghost.js, tests/ghost.test.js): buildGhostTrajectory generates cumulative step checkpoints from benchmark events without altering engine timing; ghostScoreAt and compareGhostPace evaluate live/replay pace (delta, ahead/behind/tied status, projected final score) against personal-best benchmark reference; zero benchmark contamination."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -432,10 +432,10 @@
    "id": "F35",
    "area": "Coach",
    "title": "Long-term progression system",
-   "status": "planned",
+   "status": "implemented",
    "owner": "training",
    "acceptance": [
-    "Explicit 30\u219240\u219250\u219260\u219270+ stages guided by median benchmarks"
+    "Explicit 30→40→50→60→70+ stages guided by rolling median benchmarks (packages/training/src/progression.js, tests/progression.test.js): five milestone tiers (Foundation 0–29, Fluency 30–39, Speed 40–49, Optimization 50–59, Mastery 60–70+) with stage-specific actionable focuses and recommendations; progression evaluated strictly from verified standard benchmarks (gated at >= 3 runs, lower counts establish baseline with runs-remaining guidance), trailing window median, exact points-to-next, percentage progress within stage, and 8-of-10 consistency goal integration for full mastery; practice and drills never alter ladder standing; M3 officially closed."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -444,10 +444,10 @@
    "id": "F36",
    "area": "Coach",
    "title": "Adaptive training volume",
-   "status": "planned",
+   "status": "implemented",
    "owner": "training",
    "acceptance": [
-    "Monitor signs of slowdown; recommendations never force continued practice"
+    "Monitor signs of slowdown and daily volume load (packages/training/src/volume.js, tests/volume.test.js): analyzeTrainingVolume evaluates practice duration across recent sessions and detects cognitive fatigue via latency slowdown ratio (>= 20% increase between early and late sessions); recommendVolume suggests rest or volume caps when fatigue is observed; fundamental invariant: recommendations never force continued practice (neverForce true, isOptional true, restDayAllowed true, rest days free of shame)."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -456,10 +456,10 @@
    "id": "F37",
    "area": "Coach",
    "title": "Progress forecasting",
-   "status": "planned",
+   "status": "implemented",
    "owner": "analytics",
    "acceptance": [
-    "Calibrated prediction intervals from longitudinal runs; abstain if inadequate data"
+    "Calibrated prediction intervals from longitudinal runs (packages/analytics/src/forecasting.js, tests/forecasting.test.js): forecastProgress uses Theil-Sen robust slope across verified standard benchmarks with rolling-origin cross-validation to estimate empirical prediction error; prediction intervals scale with forward horizon; strict sample-size gate explicitly abstains (abstain true, status \"insufficient-data\") when fewer than 8 benchmark runs exist to prevent spurious precision and misleading causal claims."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -471,7 +471,7 @@
    "status": "implemented",
    "owner": "training/web",
    "acceptance": [
-    "Recommendations cite the exact evidence that produced them and name specific next actions (F38, extended in M2 slice 6): the daily plan's rationale names the slowest gated skill pattern with its shrunken ratio and solve count and points to its launch points, the plateau branch's 'why' (F22) carries the evidence and its 'actions' render in the Train tab's progress line as a concrete sequence ('next: weakness gauntlet \u2192 transfer probe \u2192 standard benchmark'), and buildRecommendations (packages/training/src/recommendations.js) fuses due spaced reviews, weakest sample-gated cells, the plateau protocol and one estimated-payoff row into a single deterministic Train-tab list whose items quote their numbers and launch real practice drills, with a seeded policy-emphasis line beneath; every surface degrades gracefully with no data (empty states, coverage 'build evidence first' nudge, no fabricated homework); explicit out-of-scope: efficacy claims for any listed action and calibrated mastery modeling (F20/F21 evaluation remains open)"
+    "Recommendations cite the exact evidence that produced them and name specific next actions (F38, extended in M2 slice 6): the daily plan's rationale names the slowest gated skill pattern with its shrunken ratio and solve count and points to its launch points, the plateau branch's 'why' (F22) carries the evidence and its 'actions' render in the Train tab's progress line as a concrete sequence ('next: weakness gauntlet → transfer probe → standard benchmark'), and buildRecommendations (packages/training/src/recommendations.js) fuses due spaced reviews, weakest sample-gated cells, the plateau protocol and one estimated-payoff row into a single deterministic Train-tab list whose items quote their numbers and launch real practice drills, with a seeded policy-emphasis line beneath; every surface degrades gracefully with no data (empty states, coverage 'build evidence first' nudge, no fabricated homework); explicit out-of-scope: efficacy claims for any listed action and calibrated mastery modeling (F20/F21 evaluation remains open)"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -492,10 +492,10 @@
    "id": "F40",
    "area": "Laboratory",
    "title": "Hardware calibration",
-   "status": "partial",
+   "status": "implemented",
    "owner": "core/web",
    "acceptance": [
-    "Baseline computation exists; add independent number-copying interface"
+    "Independent number-copying interface and keyboard diagnostics (packages/core/src/calibration.js, tests/calibration.test.js): generateCopyTrials creates deterministic digit strings matching typical arithmetic answer profiles (1 to 4 digits); evaluateCopyTrial records typing latency and accuracy; computeHardwareDiagnostics calculates median latency, p10/p90 spread, and ms-per-digit entry rates to isolate hardware/keyboard overhead from cognitive calculation; backward-compatible estimateInputBaseline preserved."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -507,7 +507,7 @@
    "status": "implemented",
    "owner": "analytics",
    "acceptance": [
-    "Adjusted-distribution histogram beside the slow-tail metrics (robust cutoff, slow share, time lost per run, per-operation p50/p90, costliest stalls): fixed log bins [\u00d70.5, 0.75, 1, 1.5, 2, 3, \u221e) lower-edge-inclusive, exact counts/shares beside bars, \u22652\u00d7-typical tail share cross-checked against the shared robust cutoff, Theil\u2013Sen tail-share movement reusing the consistency trend (\u22656 runs), gated below 30 adjusted solves with empty/sparse/engine-1 states (docs/FATIGUE.md)",
+    "Adjusted-distribution histogram beside the slow-tail metrics (robust cutoff, slow share, time lost per run, per-operation p50/p90, costliest stalls): fixed log bins [×0.5, 0.75, 1, 1.5, 2, 3, ∞) lower-edge-inclusive, exact counts/shares beside bars, ≥2×-typical tail share cross-checked against the shared robust cutoff, Theil–Sen tail-share movement reusing the consistency trend (≥6 runs), gated below 30 adjusted solves with empty/sparse/engine-1 states (docs/FATIGUE.md)",
     "Benchmark isolation preserved: the histogram reads verified standard runs only (scope 'benchmark') and no scoring, eligibility or generator code is touched"
    ],
    "dependencies": [],
@@ -517,10 +517,10 @@
    "id": "F42",
    "area": "Laboratory",
    "title": "Arithmetic strategy experiments",
-   "status": "partial",
+   "status": "implemented",
    "owner": "training",
    "acceptance": [
-    "Seeded A/B assignment exists; add balanced items and outcome testing"
+    "Seeded A/B assignment, balanced item generation, and outcome testing (packages/training/src/experiment.js, tests/experiments.test.js): assignStrategyTrial preserves deterministic parity assignment; createBalancedExperiment produces counterbalanced ABBA items across arithmetic operations with matched difficulty; analyzeExperimentOutcomes measures latency and accuracy differences between strategy arms with a minimum trial gate (>= 3 per arm) and non-causal experimental disclaimers."
    ],
    "dependencies": [],
    "benchmarkSafe": true

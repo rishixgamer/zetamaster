@@ -1,5 +1,10 @@
-# Experimental laboratory — F39–F43 (PARTIAL)
+# Experimental laboratory — F39–F43
 
-Inputs: copy-typing baseline (`core/calibration.js`), first-input and entry latencies (`core/session.js`), session percentiles (`analytics/stats.js`), A/B assignment (`training/experiment.js`).
+Laboratory modules for input calibration and experimental strategy comparisons:
+- Copy-typing hardware baseline & keyboard diagnostics (`packages/core/src/calibration.js`, F40)
+- Keystroke analysis & input state machine (`packages/core/src/session.js`, F39)
+- Response-time distribution modeling (`packages/analytics/src/histogram.js`, F41)
+- Seeded balanced A/B strategy trials and outcome testing (`packages/training/src/experiment.js`, F42)
+- Performance consistency scoring (`packages/analytics/src/consistency.js`, F43)
 
-Next interfaces: `CalibrationProtocol`, `StrategyTrial`, `OutcomeAnalyzer`, `LatentSkillModel`, `ConfidenceIntervalEstimator`. Collect data only after consent, randomize comparable stimuli, calculate uncertainty, and never claim that keyboard input latency equals cognitive solving time.
+Collect data only with explicit consent, randomize comparable stimuli, calculate empirical uncertainty, and never claim that keyboard input latency equals cognitive calculation time.
