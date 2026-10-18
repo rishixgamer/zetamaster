@@ -27,6 +27,8 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 - Custom single/multi-operation sessions, operation isolation, 30-second sprints, 300-second endurance, custom duration, deterministic seeds, slowest-question replay.
 - Timed question records, first-keystroke timing proxy, corrections, slip/calculation-error typology, bounded input traces, tab-visibility integrity flags ([Telemetry](docs/TELEMETRY.md)), operation tags, medians, P90 latency and slow-question review.
 - Interactive, keyboard-accessible weakness heatmaps per operation, with sample counts, median CIs, a benchmark-only scope, deep links, and one-click 60 s cell drills that are always saved as practice.
+- Versioned per-skill taxonomy shared with the heatmaps, per-skill rollups with sample-size gates, practice-scoped pattern-drill rulesets with honest explanations, and a daily-plan note naming your slowest recorded pattern; strategy effectiveness is not yet evaluated ([Skills](docs/SKILLS.md)).
+- Persisted per-skill spaced-repetition records (deterministic scheduling, IndexedDB schema v2 `skillReviews` store with localStorage fallback, sanitized import/export); the review queue has no UI surface yet.
 - Benchmark consistency dashboard: progress toward 8-of-10 at 70+, the 8th-best gap, rolling median and 10th–90th band chart, robust trend, and median CIs ([Consistency metrics](docs/CONSISTENCY.md)).
 - Pace and slow-tail analysis: operation-adjusted solve time by part of the run, second-half slowdown with CIs, slow-question share, time lost per run, costliest stalls, and a log-binned histogram of the adjusted distribution with a ≥×2 tail share and Theil–Sen tail movement ([Pace metrics](docs/FATIGUE.md)).
 - Entry-quality panel across standard benchmark runs: per-type rates, operation-adjusted time cost (relative to clean entry and seconds lost per run), a first-key vs typing proxy split, per-operation breakdown with sample gating, and a robust trend of the calculation share ([Entry quality](docs/ENTRY_QUALITY.md)).
@@ -39,7 +41,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 ## What is not finished
 
 - Generator distribution and answer-acceptance rule were audited against the original client on 2026-10-17 ([Parity audit](docs/PARITY_AUDIT.md)). The timer cutoff and PRNG still differ, as documented there. **Individual score equivalence is not certified.**
-- Complete difficulty/method taxonomy, calibrated learner-model, integrated spaced repetition, and automated experiment evaluation remain to be built.
+- Complete difficulty/method taxonomy (skill cells are operand-space only in v1), calibrated learner-model, review-queue UI for the persisted spaced-repetition records, and automated experiment evaluation remain to be built.
 - AI tutor, multiplayer, verified leaderboards, account sync, full quant interview curriculum and market-making simulation are planned, **not usable yet**.
 - The present arithmetic Academy teaches techniques but does not yet provide interactive step-through exercises.
 

@@ -11,11 +11,11 @@ Browser mode selection
     ↓
 `core/session` (monotonic clock, event stream, score)
     ↓
-`storage/db` (local saved sessions) ────→ optional future sync adapter
+`storage/db` (local saved sessions, skill-review records) ──→ optional future sync adapter
     ↓
 `analytics` (stats, uncertainty, history, diagnosis)
     ↓
-`training` (weakness selection, plans, review scheduling)
+`training` (weakness selection, pattern drills, plans, review scheduling)
     ↓
 `curriculum` (verified mathematical explanations)
     ↓
@@ -38,7 +38,7 @@ User practice / retest / progress
 
 ### Training
 
-`chooseAdaptive(sessions)` returns rules and operation weights, keeping its training mode separate. `scheduleReview` and `candidatePriority` are primitives, **not integrated product features**. Add versioned policy IDs when comparing future learning algorithms.
+`chooseAdaptive(sessions)` returns rules and operation weights, keeping its training mode separate. The versioned skill taxonomy (`packages/training/src/skills.js`, version frozen in `SKILL_TAXONOMY_VERSION`) maps every benchmark question to a stable skill cell that *reuses the heatmap banding* — ids equal the heatmap cell keys (`docs/SKILLS.md`), and `skillRollups` computes per-skill metrics by calling `buildHeatmap` so the two surfaces share one implementation. `patternDrill(cell, seconds)` (F17) derives a custom practice ruleset narrowed to one cell; `weakestSkillCell` is the planner's deterministic selection heuristic. `scheduleReview` and `skillReviewRecord` are pure primitives, **not integrated product features**; per-skill review records are persisted by `packages/storage`. Add versioned policy IDs when comparing future learning algorithms. Drill selections are descriptive; nothing here is calibrated evidence of improvement.
 
 ### Curriculum
 
@@ -50,7 +50,7 @@ Quant drills and historical trading interview formats **never** reuse `zetamac-d
 
 ### Storage
 
-`listSessions`, `saveSession`, `deleteAllSessions`, `importSessions` use IndexedDB first and localStorage fallback. Imports go through `sanitizeImportedSession`, which rebuilds questions from source operands and recomputes `benchmark` from the mode, the rules snapshot, the duration and the score/event count. Data is device-local. Future cloud sync must implement an interface rather than inserting fetch calls into the core engine, and require affirmative consent.
+`listSessions`, `saveSession`, `deleteAllSessions`, `importSessions` use IndexedDB first and localStorage fallback. Imports go through `sanitizeImportedSession`, which rebuilds questions from source operands and recomputes `benchmark` from the mode, the rules snapshot, the duration and the score/event count. Per-skill review records (F19, `docs/SKILLS.md`) persist in the same database: the `zetamaster-v1` database is at schema version 2 (additive `skillReviews` store keyed by `id`), with a mirrored, 500-record-capped localStorage fallback key. `skillReviewRecord` (training) is the only scheduling authority; `sanitizeImportedSkillReview` re-derives `nextReviewAt` from `lastReviewedAt + intervalDays` and drops, with a count, records that carry a foreign taxonomy version, an unknown skill id, or a schedule that disagrees with that recomputation. The v2 JSON export bundle (`exportBundle`) wraps sessions *and* skill review records; `parseExportBundle` still accepts the legacy session array. Data is device-local. Future cloud sync must implement an interface rather than inserting fetch calls into the core engine, and require affirmative consent.
 
 ## Schema sketch
 
@@ -74,12 +74,19 @@ Quant drills and historical trading interview formats **never** reuse `zetamac-d
 }
 ```
 
+Per-skill review record (schema-v2 `skillReviews` store, keyed by `id`; full contract in [SKILLS.md](./SKILLS.md)):
+
+```js
+{ id: 'div:5:9', skillId: 'div:5:9', op: 'div', taxonomyVersion: 'skill-taxonomy-v1',
+  successes: 2, failures: 0, intervalDays: 2, lastReviewedAt: ISO8601, nextReviewAt: ISO8601 }
+```
+
 Schema versioning, import validation, and migrations are required before remote sync or public releases.
 
 ## Future service boundaries
 
 - `TrainingPolicy`: choose problem distributions, active learning and confidence thresholds without modifying benchmark generator.
-- `SkillRepository`: persist spaced repetition state, review events and outcome experiments.
+- `SkillRepository`: persist spaced repetition state, review events and outcome experiments. The `skillReviews` store in schema v2 is the first instantiation of this boundary.
 - `ContentRegistry`: lessons, tagged difficulty taxonomy, generative templates, exact checking.
 - `ChallengeService`: URL-safe seeded challenge, privacy, abuse controls.
 - `IdentityService` / `LeaderboardService`: *optional* auth and verified ranking, never required for solo training.

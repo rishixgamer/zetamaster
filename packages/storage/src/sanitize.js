@@ -1,5 +1,7 @@
 import { benchmarkEquivalent, BENCHMARK_RULES, OPERATIONS } from '../../core/src/rulesets.js';
 import { makeQuestion } from '../../core/src/generator.js';
+import { SKILL_TAXONOMY_VERSION } from '../../training/src/skills.js';
+import { heatmapLayout } from '../../analytics/src/heatmap.js';
 
 const NUMERIC_FIELDS = ['responseMs', 'firstInputMs', 'entryMs', 'corrections', 'wrongSubmissions', 'wrongPrefixes', 'fullWrongAnswers', 'inputChanges', 'completedAtMs', 'shownAtMs'];
 const MAX_EVENTS = 5000;
@@ -15,6 +17,41 @@ function sanitizeEvent(e) {
   for (const k of NUMERIC_FIELDS) if (e[k] === null || Number.isFinite(e[k])) out[k] = e[k] ?? null;
   if (!Number.isFinite(out.responseMs) || out.responseMs < 0) return null;
   return out;
+}
+
+/**
+ * Validate an imported skill-review record (F19). Returns null when unusable. The taxonomy version
+ * must equal the current one and the skill id must name a real cell of the current taxonomy (e.g.
+ * 'mul:5:4' must be an existing mul cell) — records written under a different taxonomy version are
+ * dropped on import and counted by the importer. `nextReviewAt` is recomputed from
+ * `lastReviewedAt + intervalDays`, never trusted, and a stored value that disagrees means the record
+ * was forged or miswritten, so it is dropped; counters are validated, never clamped silently.
+ */
+export function sanitizeImportedSkillReview(s) {
+  if (!s || typeof s !== 'object' || s.taxonomyVersion !== SKILL_TAXONOMY_VERSION) return null;
+  if (typeof s.id !== 'string' || s.id !== s.skillId) return null;
+  const parsed = parseSkillId(s.id);
+  if (!parsed) return null;
+  if (typeof s.lastReviewedAt !== 'string' || Number.isNaN(Date.parse(s.lastReviewedAt))) return null;
+  const lastReviewedAt = new Date(Date.parse(s.lastReviewedAt)).toISOString();
+  for (const n of [s.successes, s.failures]) if (!Number.isSafeInteger(n) || n < 0) return null;
+  if (!Number.isFinite(s.intervalDays) || s.intervalDays < 0) return null;
+  const nextReviewAt = new Date(Date.parse(lastReviewedAt) + s.intervalDays * 86400000).toISOString();
+  if (typeof s.nextReviewAt !== 'string' || s.nextReviewAt !== nextReviewAt) return null;
+  return {
+    id: parsed.id, skillId: parsed.id, op: parsed.op, taxonomyVersion: SKILL_TAXONOMY_VERSION,
+    successes: s.successes, failures: s.failures, intervalDays: s.intervalDays,
+    lastReviewedAt, nextReviewAt,
+  };
+}
+
+/** True only for ids of the form `${op}:${row}:${col}` that name a cell of the current taxonomy. */
+export function parseSkillId(id) {
+  const match = /^([a-z]+):(\d+):(\d+)$/.exec(id);
+  if (!match || !OPERATIONS.includes(match[1])) return null;
+  const [_, op, row, col] = match, layout = heatmapLayout(op);
+  if (Number(row) >= layout.rows.length || Number(col) >= layout.cols.length) return null;
+  return { id, op, row: Number(row), col: Number(col) };
 }
 
 /**

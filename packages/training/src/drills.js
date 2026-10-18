@@ -1,4 +1,4 @@
-import { BENCHMARK_RULES, customRules } from '../../core/src/rulesets.js';
+import { BENCHMARK_RULES, customRules, OPERATIONS } from '../../core/src/rulesets.js';
 import { diagnose } from '../../analytics/src/diagnostics.js';
 export const DRILL_CATALOG = [
   {id:'benchmark',title:'Classic benchmark',goal:'Measure real 120-second performance',implemented:true},
@@ -39,4 +39,31 @@ export function cellDrill(op, { rowRange, colRange }, seconds=60) {
   const ranges = { left:[...rowRange], right:[...colRange] };
   const base = { enabled:[op], durationSeconds:seconds, label:'Heatmap drill' };
   return op==='add'||op==='sub' ? customRules({ ...base, addition:ranges }) : customRules({ ...base, multiplication:ranges });
+}
+
+const DRILL_GLYPH = { add:'+', sub:'–', mul:'×', div:'÷' };
+const rangeLabel = r => Array.isArray(r) && r.length===2 && r.every(Number.isFinite) ? `${r[0]}–${r[1]}` : null;
+
+/**
+ * Practice drill for one skill cell (F17, M2). Extends `cellDrill`: same operand narrowing, but the
+ * ruleset carries its own id/label and an honest explanation. Always a practice-namespace ruleset —
+ * `benchmarkEquivalent` stays false even for a full-range cell because the id and label differ from
+ * the benchmark's. No efficacy claims: whether pattern drills transfer to benchmark speed is an open
+ * question tracked by F21/F22.
+ * `cell` accepts a `skillCellFor` result or a `skillRollups` record (needs op, rowRange, colRange).
+ */
+export function patternDrill(cell, seconds=60) {
+  if (!cell || typeof cell !== 'object') throw new RangeError('Pattern drill needs a skill cell');
+  const { op, rowRange, colRange } = cell;
+  if (!OPERATIONS.includes(op)) throw new RangeError('Pattern drill needs a valid operation');
+  const row = rangeLabel(rowRange), col = rangeLabel(colRange);
+  if (!row || !col) throw new RangeError('Pattern drill needs the cell operand ranges');
+  const label = typeof cell.label === 'string' && cell.label ? cell.label : `${row} ${DRILL_GLYPH[op]} ${col}`;
+  const rules = cellDrill(op, { rowRange, colRange }, seconds);
+  return {
+    ...rules,
+    id: 'pattern-drill',
+    label: `Pattern drill · ${label}`,
+    explanation: `Practice limited to ${label} for ${seconds} seconds. This is a practice run — it never counts as a benchmark. It targets your slowest recorded pattern (descriptive, small samples). No claims yet that pattern drills raise benchmark scores; that is evaluated separately (F21/F22).`,
+  };
 }

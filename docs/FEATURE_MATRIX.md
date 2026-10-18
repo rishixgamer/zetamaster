@@ -20,9 +20,9 @@ The 55 entries below correspond to every numbered product feature in the brainst
 | F14 | Question replay | implemented | `web/core` | Replay slowest five attempts with original operands outside benchmark |
 | F15 | Statistical confidence | implemented | `analytics` | Shrinkage and distribution-free median CIs on heatmap cells, operation summaries and recent scores; Sen trend interval; percentile band visualization; sample-size gates throughout |
 | F16 | Automatic bottleneck identification | partial | `analytics` | Operation and tag weaknesses from historical event stream with sample warnings |
-| F17 | Intelligent drill generation | partial | `training` | Weight weaker operations; generate targeted technique or fact drills later |
+| F17 | Intelligent drill generation | partial | `training` | Skill-cell drill rules are generated from the taxonomy (patternDrill extends cellDrill) with pinned operand ranges, own id/label and an honest explanation; the daily plan surfaces the weakest stable pattern when its data exists; UI launch point and efficacy evaluation (F21/F22) still missing |
 | F18 | Adaptive difficulty | planned | `training` | Raise/lower difficulty based on rolling mastery while preserving original benchmark |
-| F19 | Spaced repetition | partial | `training` | Pure scheduling primitive exists; persist per-skill review and integrate UI |
+| F19 | Spaced repetition | partial | `training` | Pure scheduling primitive is deterministic with explicit now; per-skill review records persist in IndexedDB schema v2 (additive store) with capped localStorage fallback, sanitized/versioned imports and v2 export bundle; the review queue still has no UI surface — records exist but nothing prompts practice from nextReviewAt |
 | F20 | Personalized mastery model | partial | `analytics` | Transparent smoothed proxy exists; calibrate probabilistic model on held-out sessions |
 | F21 | Score-improvement prioritization | partial | `training` | Priority heuristic exists; compare predicted versus observed training gains |
 | F22 | Automatic plateau detection | partial | `analytics` | Conservative plateau signal exists; add intervention and evaluation protocol |

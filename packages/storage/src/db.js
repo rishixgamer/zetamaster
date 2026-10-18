@@ -1,41 +1,48 @@
-import { sanitizeImportedSession } from './sanitize.js';
+import { sanitizeImportedSession, sanitizeImportedSkillReview } from './sanitize.js';
+import { skillReviewRecord } from '../../training/src/scheduler.js';
 const DATABASE='zetamaster-v1';
 const FALLBACK_KEY='zetamaster-sessions-v1';
+const REVIEW_KEY='zetamaster-skill-reviews-v1';
 const MAX_FALLBACK=500;
+const REVIEW_STORE='skillReviews';
+/** Storage schema 2 adds the versioned skill-review store (F19). Additive only: existing 'sessions'
+ * data is untouched by onupgradeneeded, so v1 users upgrade in place. Opening this schema from an
+ * older cached page would fail with a version error; the service-worker cache bump keeps pages fresh. */
+const STORAGE_VERSION=2;
 
 function open() {
   return new Promise((resolve,reject)=>{
     if(!('indexedDB' in globalThis)) {reject(new Error('IndexedDB unavailable'));return;}
-    const req=indexedDB.open(DATABASE,1);
-    req.onupgradeneeded=()=>{const db=req.result; if(!db.objectStoreNames.contains('sessions'))db.createObjectStore('sessions',{keyPath:'id'});};
+    const req=indexedDB.open(DATABASE,STORAGE_VERSION);
+    req.onupgradeneeded=()=>{const db=req.result; if(!db.objectStoreNames.contains('sessions'))db.createObjectStore('sessions',{keyPath:'id'}); if(!db.objectStoreNames.contains(REVIEW_STORE))db.createObjectStore(REVIEW_STORE,{keyPath:'id'});};
     req.onsuccess=()=>resolve(req.result);
     req.onerror=()=>reject(req.error);
   });
 }
-async function transact(type, action) {
+async function transact(storeName, type, action) {
   const db=await open();
   try {return await new Promise((resolve,reject)=>{
-    const tx=db.transaction('sessions',type);
-    const request=action(tx.objectStore('sessions'));
+    const tx=db.transaction(storeName,type);
+    const request=action(tx.objectStore(storeName));
     request.onsuccess=()=>resolve(request.result);
     request.onerror=()=>reject(request.error);
     tx.onerror=()=>reject(tx.error);
   });} finally {db.close();}
 }
-function fallbackRead(){try{return JSON.parse(localStorage.getItem(FALLBACK_KEY) || '[]');}catch{return [];}}
-function fallbackWrite(xs){localStorage.setItem(FALLBACK_KEY,JSON.stringify(xs.slice(-MAX_FALLBACK)));}
+function fallbackRead(key){try{return JSON.parse(localStorage.getItem(key) || '[]');}catch{return [];}}
+function fallbackWrite(key,xs){localStorage.setItem(key,JSON.stringify(xs.slice(-MAX_FALLBACK)));}
 export async function listSessions() {
-  try{return (await transact('readonly',store=>store.getAll())).sort((a,b)=>Date.parse(b.startedAt)-Date.parse(a.startedAt));}
-  catch{return fallbackRead().sort((a,b)=>Date.parse(b.startedAt)-Date.parse(a.startedAt));}
+  try{return (await transact('sessions','readonly',store=>store.getAll())).sort((a,b)=>Date.parse(b.startedAt)-Date.parse(a.startedAt));}
+  catch{return fallbackRead(FALLBACK_KEY).sort((a,b)=>Date.parse(b.startedAt)-Date.parse(a.startedAt));}
 }
 export async function saveSession(session) {
   const record={...session,id:session.id+'-'+(globalThis.crypto?.randomUUID?.()??Math.random().toString(36).slice(2))};
-  try{await transact('readwrite',store=>store.put(record));}
-  catch{fallbackWrite([...fallbackRead(),record]);}
+  try{await transact('sessions','readwrite',store=>store.put(record));}
+  catch{fallbackWrite(FALLBACK_KEY,[...fallbackRead(FALLBACK_KEY),record]);}
   return record;
 }
 export async function deleteAllSessions() {
-  try{await transact('readwrite',store=>store.clear());}catch{}
+  try{await transact('sessions','readwrite',store=>store.clear());}catch{}
   try{localStorage.removeItem(FALLBACK_KEY);}catch{}
 }
 export async function importSessions(records) {
@@ -48,4 +55,40 @@ export async function importSessions(records) {
     await saveSession(s); count++;
   }
   return count;
+}
+
+// Per-skill spaced-repetition records (F19): same discipline as sessions — IndexedDB first, capped
+// localStorage fallback, sanitized imports. Records are keyed by skill id and carry the taxonomy
+// version; see docs/SKILLS.md for the record shape and migration contract.
+export async function listSkillReviews() {
+  try{return await transact(REVIEW_STORE,'readonly',store=>store.getAll());}
+  catch{return fallbackRead(REVIEW_KEY);}
+}
+export async function saveSkillReview(record) {
+  try{await transact(REVIEW_STORE,'readwrite',store=>store.put(record));}
+  catch{fallbackWrite(REVIEW_KEY,[...fallbackRead(REVIEW_KEY).filter(r=>r?.id!==record?.id),record]);}
+  return record;
+}
+/**
+ * Record one review outcome for a skill, composing the pure `skillReviewRecord` primitive. `now` is
+ * explicit (an ISO string or Date) so scheduling is deterministic in tests; production callers may
+ * omit it. `skillId` should come from the current taxonomy (`skillCellFor`/`skillRollups`); record
+ * ids are not re-validated here — imported records are validated by `sanitizeImportedSkillReview`.
+ */
+export async function recordSkillReview(skillId, wasFastAndCorrect, now = new Date()) {
+  const existing=(await listSkillReviews()).find(r=>r?.id===skillId) ?? null;
+  const updated=skillReviewRecord(skillId, existing, wasFastAndCorrect, now);
+  await saveSkillReview(updated);
+  return updated;
+}
+export async function importSkillReviews(records) {
+  if(!Array.isArray(records))throw new Error('Import must be an array');
+  if(records.length>10000)throw new Error('Import exceeds 10,000 skill records');
+  let imported=0, dropped=0;
+  for(const raw of records){
+    const r=sanitizeImportedSkillReview(raw);
+    if(!r){dropped++;continue;}
+    await saveSkillReview(r); imported++;
+  }
+  return { imported, dropped, total: records.length };
 }

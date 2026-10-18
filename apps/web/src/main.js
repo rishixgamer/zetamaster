@@ -16,8 +16,8 @@ import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { LESSONS } from '../../../packages/curriculum/src/lessons.js';
 import { suggestLesson } from '../../../packages/curriculum/src/explanations.js';
-import { listSessions, saveSession, deleteAllSessions, importSessions } from '../../../packages/storage/src/db.js';
-import { downloadJson, downloadCsv } from '../../../packages/storage/src/export.js';
+import { listSessions, saveSession, deleteAllSessions, importSessions, importSkillReviews, listSkillReviews } from '../../../packages/storage/src/db.js';
+import { downloadJson, downloadCsv, exportBundle, parseExportBundle } from '../../../packages/storage/src/export.js';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -168,12 +168,21 @@ function renderAnalytics(){
     if(!slow.length)return;
     setView('train');showIdle();startGame({replay:slow});
   });
-  $('#export-json').addEventListener('click',()=>downloadJson('zetamaster-sessions.json',sessions));
+  $('#export-json').addEventListener('click',async()=>downloadJson('zetamaster-sessions.json',exportBundle(sessions,await listSkillReviews().catch(()=>[]))));
   $('#export-csv').addEventListener('click',()=>downloadCsv('zetamaster-sessions.csv',sessions));
   $('#import-json').addEventListener('click',()=>$('#import-file').click());
   $('#import-file').addEventListener('change',async e=>{
     const file=e.target.files?.[0]; if(!file)return;
-    try {const entries=JSON.parse(await file.text());const count=await importSessions(entries);await refresh();alert(`Imported ${count} sessions.`);}
+    try {
+      const parsed=JSON.parse(await file.text());
+      const records=parseExportBundle(parsed);
+      if(!records)throw new Error('No sessions found in the file.');
+      const count=await importSessions(records);
+      let reviews=0;
+      if(parsed && typeof parsed==='object' && Array.isArray(parsed.skillReviews)) reviews=(await importSkillReviews(parsed.skillReviews)).imported;
+      await refresh();
+      alert(`Imported ${count} sessions${reviews?` and ${reviews} skill review records`:''}.`);
+    }
     catch(error){alert(`Import failed: ${error.message}`);}
   });
   $('#clear-history').addEventListener('click',async()=>{

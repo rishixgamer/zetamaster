@@ -208,7 +208,7 @@
       "status": "partial",
       "owner": "training",
       "acceptance": [
-        "Weight weaker operations; generate targeted technique or fact drills later"
+        "Skill-cell drill rules are generated from the taxonomy (patternDrill extends cellDrill) with pinned operand ranges, own id/label and an honest explanation; the daily plan surfaces the weakest stable pattern when its data exists; UI launch point and efficacy evaluation (F21/F22) still missing"
       ],
       "dependencies": [],
       "benchmarkSafe": true
@@ -232,7 +232,7 @@
       "status": "partial",
       "owner": "training",
       "acceptance": [
-        "Pure scheduling primitive exists; persist per-skill review and integrate UI"
+        "Pure scheduling primitive is deterministic with explicit now; per-skill review records persist in IndexedDB schema v2 (additive store) with capped localStorage fallback, sanitized/versioned imports and v2 export bundle; the review queue still has no UI surface — records exist but nothing prompts practice from nextReviewAt"
       ],
       "dependencies": [],
       "benchmarkSafe": true
