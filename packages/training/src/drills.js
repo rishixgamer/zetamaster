@@ -18,7 +18,7 @@ export const DRILL_CATALOG = [
   {id:'ghost',title:'Personal best ghost',goal:'Pace against previous run',implemented:false},
   {id:'daily',title:'Daily challenge',goal:'Common seeded test',implemented:false},
   {id:'duel',title:'Head-to-head duel',goal:'Live competition',implemented:false},
-  {id:'quant',title:'Quant interview prep',goal:'Fractions, percentages and EV',implemented:false},
+  {id:'quant',title:'Quant interview prep',goal:'Fractions, percentages and EV',implemented:true},
 ];
 export function chooseAdaptive(sessions, durationSeconds=120) {
   const diagnostics=diagnose(sessions);

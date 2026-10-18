@@ -36,6 +36,8 @@ import { evaluateAchievements, ACHIEVEMENT_CATALOG } from '../../../packages/com
 import { encodeChallenge, decodeChallenge, buildChallengeUrl, parseChallengeFromUrl } from '../../../packages/community/src/challenges.js';
 import { verifyBenchmarkSession } from '../../../packages/services/src/anti-cheat.js';
 import { submitLeaderboardScore, getLeaderboardRankings, readLeaderboardConsent, setLeaderboardConsent, sanitizeAlias, defaultLeaderboardStore } from '../../../packages/services/src/leaderboard.js';
+import { createQuantGenerator } from '../../../packages/quant/src/generator.js';
+import { renderQuantUI } from './quant-ui.js';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -84,6 +86,7 @@ async function refresh() {
   renderIntervals();
   renderRecommendations();
   renderCommunity();
+  renderQuant();
 }
 
 // Daily plan (F34): steps regenerate from history every refresh; only *completion* persists (one
@@ -366,7 +369,9 @@ function startGame({ replay=null, drill=null, preset=null }={}) {
     const items=replay.map(q=>makeQuestion(q.op,q.sourceLeft,q.sourceRight,++index));
     let cursor=0;
     generator=()=>{const q=items[cursor%items.length];cursor++;return {...q,id:`replay-${cursor}`,sequence:cursor};};
-  } else if(preset) generator=gauntletGenerator(preset,currentSeed);
+  } else if(preset?.generator) generator=preset.generator;
+  else if(preset && preset.cells) generator=gauntletGenerator(preset,currentSeed);
+  else if(mode==='quant'||preset?.mode==='quant') generator=preset?.generator ?? createQuantGenerator(currentSeed);
   else generator=createGenerator(rules,currentSeed,weights);
   currentMode=mode; currentReplay=replay; currentDrill=drill;
   // Ghost racing (F33): enable cumulative pace comparison during replay and practice against personal-best benchmark
@@ -410,7 +415,7 @@ function renderGhostPace(remainingMs) {
 }
 function updateQuestion() {
   const q=currentSession.current;
-  $('#problem').textContent=`${q.left} ${q.symbol} ${q.right}`;
+  $('#problem').textContent=q.expression ?? `${q.left} ${q.symbol} ${q.right}`;
   $('#game-score').innerHTML=`${currentSession.score} <small>correct</small>`;
   renderGhostPace();
 }
@@ -1517,6 +1522,17 @@ function checkUrlChallenge() {
   }
 }
 
+function renderQuant() {
+  renderQuantUI({
+    root: $('#quant-root'),
+    sessions,
+    onStartGame: ({ preset }) => {
+      setView('train');
+      showIdle();
+      startGame({ preset });
+    },
+  });
+}
 function bind(){
   $$('.nav-link').forEach(btn=>btn.addEventListener('click',()=>setView(btn.dataset.view)));
   $('#brand').addEventListener('click',e=>{e.preventDefault();setView('train');});
@@ -1540,5 +1556,5 @@ function bind(){
   $('#challenge-modal')?.addEventListener('cancel',()=>$('#challenge-modal')?.close());
   $$('#lesson-filters button').forEach(button=>button.addEventListener('click',()=>{$$('#lesson-filters button').forEach(b=>b.classList.toggle('selected',b===button));renderLessons(button.dataset.op);}));
 }
-bind();updateMode();renderLessons();renderRoadmap();renderCommunity();checkUrlChallenge();applyHeatmapHash();refresh().catch(error=>console.error('History loading failed',error));
+bind();updateMode();renderLessons();renderRoadmap();renderCommunity();renderQuant();checkUrlChallenge();applyHeatmapHash();refresh().catch(error=>console.error('History loading failed',error));
 if('serviceWorker' in navigator && location.protocol!=='file:')navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(error=>console.warn('Offline registration unavailable',error));

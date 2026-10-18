@@ -601,10 +601,10 @@
    "id": "F49",
    "area": "Quant",
    "title": "Fractions and decimals",
-   "status": "partial",
+   "status": "implemented",
    "owner": "quant",
    "acceptance": [
-    "Separate quant generator scaffold; expand exact rational representations"
+    "Exact rational representation, reduction, mixed fraction/decimal parsing, deterministic arithmetic drill generator, and equivalence checking (packages/quant/src/rational.js, packages/quant/src/fractions.js, tests/rational.test.js, tests/fractions.test.js)"
    ],
    "dependencies": [],
    "benchmarkSafe": false
@@ -613,10 +613,10 @@
    "id": "F50",
    "area": "Quant",
    "title": "Probability arithmetic",
-   "status": "partial",
+   "status": "implemented",
    "owner": "quant",
    "acceptance": [
-    "EV prototype exists; add verified probability and combinatorics drill bank"
+    "Exact probability arithmetic, combinatorics (nPr, nCr, n!), dice sums, coin flips, cards, and expected value drill generator (packages/quant/src/probability.js, tests/probability.test.js)"
    ],
    "dependencies": [],
    "benchmarkSafe": false
@@ -625,10 +625,10 @@
    "id": "F51",
    "area": "Quant",
    "title": "Percentages and finance",
-   "status": "partial",
+   "status": "implemented",
    "owner": "quant",
    "acceptance": [
-    "Percentage and basis-point generators exist; add explicit quant UI and feedback"
+    "Percentages, basis points, margin vs markup, simple interest, and Rule of 72 arithmetic generator and evaluator (packages/quant/src/finance.js, tests/finance.test.js)"
    ],
    "dependencies": [],
    "benchmarkSafe": false
@@ -637,10 +637,10 @@
    "id": "F52",
    "area": "Quant",
    "title": "Estimation training",
-   "status": "planned",
+   "status": "implemented",
    "owner": "quant",
    "acceptance": [
-    "Range-based tolerance with verified numerical bounds and justification"
+    "Range-based numerical estimation training with verified tolerance bounds, percentage error calculation, and step-by-step justification (packages/quant/src/estimation.js, tests/estimation.test.js)"
    ],
    "dependencies": [],
    "benchmarkSafe": false
@@ -649,10 +649,10 @@
    "id": "F53",
    "area": "Quant",
    "title": "Running arithmetic",
-   "status": "planned",
+   "status": "implemented",
    "owner": "quant",
    "acceptance": [
-    "Stateful sequence generator with deterministic intermediate answers"
+    "Stateful running arithmetic sequence generator with deterministic step-by-step intermediate and final answer validation (packages/quant/src/running.js, tests/running.test.js)"
    ],
    "dependencies": [],
    "benchmarkSafe": false
@@ -661,10 +661,10 @@
    "id": "F54",
    "area": "Quant",
    "title": "Historical 80-in-8 training",
-   "status": "planned",
+   "status": "implemented",
    "owner": "quant",
    "acceptance": [
-    "Separate format and scoring based on documented historical question style"
+    "Historical 80-in-8 quant training mode with negative marking (+1 correct, -1 incorrect), format-specific ruleset, and zero benchmark contamination (packages/quant/src/historical.js, tests/historical.test.js)"
    ],
    "dependencies": [],
    "benchmarkSafe": false
@@ -673,10 +673,10 @@
    "id": "F55",
    "area": "Quant",
    "title": "Market-making simulations",
-   "status": "planned",
+   "status": "implemented",
    "owner": "quant",
    "acceptance": [
-    "Simple expected-value quoting game with separate skill metrics"
+    "Market-making expected-value quoting simulator with bid/ask spread limits, counterparty flow simulation, PnL settlement, and edge tracking (packages/quant/src/market-making.js, tests/market-making.test.js)"
    ],
    "dependencies": [],
    "benchmarkSafe": false
