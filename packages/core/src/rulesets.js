@@ -18,6 +18,12 @@ export function validateRules(candidate) {
   for (const pair of [r.addition?.left, r.addition?.right, r.multiplication?.left, r.multiplication?.right]) {
     if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(Number.isSafeInteger) || pair[0] < 1 || pair[1] > 10000 || pair[0] > pair[1]) throw new RangeError('Invalid operand range');
   }
+  // Optional per-question latency budget (F31, practice-only). The benchmark ruleset never carries
+  // it, so benchmark behavior stays byte-identical; a forged benchmark import with the extra field
+  // fails `benchmarkEquivalent` and can never validate.
+  if (r.questionBudgetMs !== undefined && (!Number.isSafeInteger(r.questionBudgetMs) || r.questionBudgetMs < 100 || r.questionBudgetMs > 60000)) {
+    throw new RangeError('Per-question budget must be 100–60000 ms when present');
+  }
   return r;
 }
 export function customRules({ enabled = [...OPERATIONS], durationSeconds = 120, addition = BENCHMARK_RULES.addition, multiplication = BENCHMARK_RULES.multiplication, ...rest } = {}) {

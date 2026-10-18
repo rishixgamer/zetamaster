@@ -35,6 +35,18 @@ Engine-1 sessions have no `wrongPrefixes`, so any correction in them is reported
 - `hiddenCount`, `hiddenMs`: number and total length of page-hidden intervals before the deadline. The clock keeps running, as in the original, so hiding the page can't improve a score. Benchmarks stay valid but the results screen shows the hidden time.
 - `pasteEvents`: count of multi-character insertions.
 
+## Per-question latency budget (F31, practice-only runs)
+
+A practice ruleset may carry `questionBudgetMs` (validated 100–60 000 ms; the standard benchmark
+never has it). When it is set, a question not answered inside the window is recorded — never
+scored — in the run's `missedEvents` (one entry per expired problem, with the budget itself as
+`responseMs`, `missed: true` and `expiredAtMs`), and the next question receives a fresh window.
+`result.missedCount` is the count. Enforcement is in the engine (`maybeExpireQuestion`), so the
+budget holds whether the timer tick or a keystroke arrives first; the stale keystroke is dropped.
+Automaticity ("flash") drills set this to the shared `AUTOMATICITY_MS` 2000 ms line and wrap their
+generator in `varyStimulus` so the same fact never repeats back to back (F31; see [GAUNTLET.md](./GAUNTLET.md)). Imported sessions do not reconstruct missed events; solved-event
+telemetry and benchmark eligibility are unaffected.
+
 ## Benchmark eligibility
 
 `benchmark` is true only if `mode === 'benchmark'`, the rules snapshot equals `BENCHMARK_RULES`, the full duration elapsed, and the run wasn't ended manually. Imported sessions get this recomputed from those same fields by `packages/storage/src/sanitize.js`, and the score must also equal the number of solved events.

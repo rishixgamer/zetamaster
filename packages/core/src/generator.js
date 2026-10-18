@@ -35,3 +35,27 @@ export function createGenerator(rules, seed = 'default', weights = null) {
     return makeQuestion(op, a, b, ++sequence);
   };
 }
+
+const sameFact = (p, q) => p.op === q.op && p.sourceLeft === q.sourceLeft && p.sourceRight === q.sourceRight;
+
+/**
+ * Stimulus-variety decorator (F31, cognitive automaticity training). An i.i.d. seeded draw can,
+ * by chance, set the exact same fact twice in a row — and a repeated problem invites rote short-term
+ * recall instead of real retrieval. This wrapper redraws whenever the next draw repeats the previous
+ * fact (same operation and both source operands), bounded by `maxRedraws` so a degenerate range
+ * (e.g. [5,5] × [5,5]) can never loop forever: at the cap the draw is emitted as-is, and honesty
+ * beats a hang. Deterministic for a given seed because the wrapped generator is; the decorator
+ * changes nothing else — ranges, question objects and sequencing stay the base generator's.
+ */
+export function varyStimulus(base, { maxRedraws = 16 } = {}) {
+  if (!Number.isSafeInteger(maxRedraws) || maxRedraws < 0) throw new RangeError('maxRedraws must be a non-negative integer');
+  let previous = null;
+  return () => {
+    let question = base();
+    if (previous && sameFact(previous, question)) {
+      for (let tries = 0; tries < maxRedraws && sameFact(previous, question); tries++) question = base();
+    }
+    previous = { op: question.op, sourceLeft: question.sourceLeft, sourceRight: question.sourceRight };
+    return question;
+  };
+}

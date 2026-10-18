@@ -20,6 +20,8 @@ export function isAnswerPrefix(value, answer) { return String(answer).startsWith
  * - wrongSubmissions: Enter pressed on a non-matching field (no game effect, as in the original).
  * - pasted: a single input event added more than one character.
  * - firstInputMs: time to first keystroke — a proxy, not exact thinking time.
+ * - missedEvents: questions expired by an optional `questionBudgetMs` (F31, practice-only); records
+ *   how long the problem was shown and never counts towards the score or the review evidence.
  */
 export class ArithmeticSession {
   constructor({ rules, generator, clock = () => performance.now(), wallClock = () => new Date().toISOString(), mode = 'benchmark', seed = '', captureTrace = true, drill = null }) {
@@ -33,26 +35,55 @@ export class ArithmeticSession {
     this.drill = drill;
     this.state = 'ready';
     this.events = [];
+    this.missedEvents = []; // latency-budget expirations (F31); never counted as solves or scores
     this.score = 0;
     this.current = null;
     this.startedAt = null;
     this.integrity = { hiddenCount: 0, hiddenMs: 0, pasteEvents: 0 };
     this.hiddenSince = null;
+    // Optional per-question latency budget (F31, practice-only rulesets). The benchmark ruleset
+    // carries none, so standard behavior is untouched. 0/undefined means "no budget".
+    this.questionBudgetMs = Number.isSafeInteger(rules.questionBudgetMs) && rules.questionBudgetMs > 0 ? rules.questionBudgetMs : null;
+    this.pendingExpiry = false; // consumed by the UI once per expiry, to clear the input field
     this.resetQuestionState();
   }
   resetQuestionState() {
     this.questionShownAt = null; this.firstInputAt = null; this.lastValue = '';
     this.inputChanges = 0; this.corrections = 0; this.wrongSubmissions = 0;
     this.wrongPrefixes = 0; this.fullWrongAnswers = 0; this.pasted = false; this.trace = [];
+    this.questionDeadline = null;
   }
   start() {
     if (this.state !== 'ready') throw new Error('Session already started');
-    this.state = 'active'; this.startedAt = this.clock(); this.startedIso = this.wallClock(); this.advance(); return this.current;
+    this.state = 'active'; this.startedAt = this.clock(); this.startedIso = this.wallClock(); this.pendingExpiry = false; this.advance(); return this.current;
   }
-  advance() { this.resetQuestionState(); this.current = this.generator(); this.questionShownAt = this.clock(); }
+  advance() { this.resetQuestionState(); this.current = this.generator(); this.questionShownAt = this.clock(); if (this.questionBudgetMs !== null) this.questionDeadline = this.questionShownAt + this.questionBudgetMs; }
   remainingMs() { if (this.state === 'ready') return this.rules.durationSeconds * 1000; if (this.state === 'finished') return 0; return Math.max(0, this.rules.durationSeconds * 1000 - (this.clock() - this.startedAt)); }
   /** Call from the UI timer; finishes the session once the deadline has passed. */
-  tick() { if (this.state === 'active' && this.remainingMs() <= 0) this.finish(); return this.remainingMs(); }
+  tick() {
+    if (this.state === 'active' && this.remainingMs() <= 0) { this.finish(); return 0; }
+    this.maybeExpireQuestion();
+    return this.remainingMs();
+  }
+  /**
+   * Per-question latency enforcement (F31, practice-only). When the ruleset carries
+   * `questionBudgetMs` and the current question has been up longer, the problem is recorded as
+   * *missed* — remembered for transparency, never a solve, never a point — and replaced, like a
+   * flashcard flipped past its window. Idempotent per question; called from `tick()` and at the top
+   * of `recordInput()`, so the budget holds no matter which path got there first. Returns whether it
+   * expired; `consumeExpiry()` lets the UI clear the stale input field once.
+   */
+  maybeExpireQuestion() {
+    if (this.state !== 'active' || this.questionBudgetMs === null || this.questionDeadline === null) return false;
+    if (this.clock() < this.questionDeadline) return false;
+    const missed = { ...this.current, ...this.questionTelemetry(this.questionDeadline), missed: true, expiredAtMs: this.questionDeadline - this.startedAt };
+    this.missedEvents.push(missed);
+    this.pendingExpiry = true;
+    this.advance();
+    return true;
+  }
+  /** One-shot: true once per expiry until the UI acknowledges it (clears the input field). */
+  consumeExpiry() { const hit = this.pendingExpiry === true; this.pendingExpiry = false; return hit; }
   /**
    * Feed the full current field text after every input event. Returns true when it solved the problem.
    * `previousValue` is accepted for backward compatibility; the session tracks the prior value itself.
@@ -60,6 +91,9 @@ export class ArithmeticSession {
   recordInput(value, previousValue) {
     if (this.state !== 'active') return false;
     if (this.remainingMs() <= 0) { this.finish(); return false; }
+    // A keystroke typed against a question that has just been expired belongs to the expired
+    // problem: drop it entirely. The next input event starts the new question's state cleanly.
+    if (this.maybeExpireQuestion()) return false;
     value = String(value ?? '');
     const prior = this.lastValue;
     if (value === prior) return false;
@@ -115,6 +149,8 @@ export class ArithmeticSession {
       rules: this.rules, engineVersion: ENGINE_VERSION, endedEarly: !fullDuration,
       benchmark: this.mode === 'benchmark' && benchmarkEquivalent(this.rules) && fullDuration,
       score: this.score, elapsedMs, events: this.events, finalUnanswered, integrity: { ...this.integrity },
+      missedCount: this.missedEvents.length,
+      missedEvents: [...this.missedEvents],
       ...(this.drill ? { drill: this.drill } : {}),
     };
     return this.result;

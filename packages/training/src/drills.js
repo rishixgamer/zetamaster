@@ -1,6 +1,7 @@
 import { BENCHMARK_RULES, customRules, OPERATIONS } from '../../core/src/rulesets.js';
 import { diagnose } from '../../analytics/src/diagnostics.js';
 import { heatmapLayout } from '../../analytics/src/heatmap.js';
+import { AUTOMATICITY_MS } from '../../analytics/src/skill-model.js';
 export const DRILL_CATALOG = [
   {id:'benchmark',title:'Classic benchmark',goal:'Measure real 120-second performance',implemented:true},
   {id:'adaptive',title:'Train my weaknesses',goal:'Spend more attempts on slow operations',implemented:true},
@@ -43,6 +44,7 @@ export function cellDrill(op, { rowRange, colRange }, seconds=60) {
 }
 
 const DRILL_GLYPH = { add:'+', sub:'–', mul:'×', div:'÷' };
+export { DRILL_GLYPH };
 const rangeLabel = r => Array.isArray(r) && r.length===2 && r.every(Number.isFinite) ? `${r[0]}–${r[1]}` : null;
 
 /**
@@ -150,5 +152,36 @@ export function patternDrill(cell, seconds = 60, { tier = DEFAULT_DRILL_TIER } =
     id: 'pattern-drill',
     label: `Pattern drill · ${label}${TIER_SUFFIX[tier]}`,
     explanation,
+  };
+}
+
+/**
+ * Automaticity / "flash" drill for one skill cell (F31, M2). Same operand narrowing as a full tier-2
+ * pattern drill, plus a hard per-question latency budget (`budgetMs` default = the shared
+ * `AUTOMATICITY_MS` 2000 ms line, one definition across F19/F20/F31): a problem not answered inside
+ * the budget is *missed* and replaced — recall that is not automatic is exactly what the drill does
+ * not reward. The seeded draw is wrapped in `varyStimulus`, so the same fact never appears twice in
+ * a row and a repeat cannot be answered from short-term memory ("avoids rote sequence recall").
+ * Practice-only (`benchmarkEquivalent` false, benchmark ruleset untouched), `stage: 'flash'` so the
+ * spaced-review ladder (F19) ignores these runs — automaticity checks and pattern reviews measure
+ * different things and must not contaminate each other's evidence. Speed heuristic: no claim that
+ * flash drills raise benchmark scores (F21/F22 evaluate transfer separately).
+ *
+ * Statistics caveat: on a small cell (a table factor × one band) even the varied draw eventually
+ * repeats facts within one 60-second run; the variety guarantee is strictly "no adjacent repeats",
+ * a property pinned by tests.
+ */
+export function automaticityDrill(cell, seconds = 60, { budgetMs = AUTOMATICITY_MS } = {}) {
+  if (!Number.isSafeInteger(budgetMs) || budgetMs < 100 || budgetMs > 60000) throw new RangeError('Per-question budget must be 100–60000 ms');
+  const tierRanges = drillRangesForTier(cell, DEFAULT_DRILL_TIER); // validates op/shape; full cell
+  const rules = cellDrill(cell.op, { rowRange: tierRanges.rowRange, colRange: tierRanges.colRange }, seconds);
+  const row = rangeLabel(tierRanges.rowRange), col = rangeLabel(tierRanges.colRange);
+  const label = typeof cell.label === 'string' && cell.label ? cell.label : `${row} ${DRILL_GLYPH[cell.op]} ${col}`;
+  return {
+    ...rules,
+    id: 'automaticity-drill',
+    questionBudgetMs: budgetMs,
+    label: `Automaticity drill · ${label}`,
+    explanation: `Latency-bound practice on ${label} for ${seconds} seconds: each question is replaced after ${(budgetMs / 1000).toFixed(1)} s and counts as missed, and the same fact never repeats back to back. Speed heuristic only — recall that is not automatic never scores here, and there is no claim yet that flash drills raise benchmark scores (evaluated separately, F21/F22). It is a practice run and never counts as a benchmark.`,
   };
 }

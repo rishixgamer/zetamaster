@@ -10,9 +10,10 @@ import { paceProfile, tailProfile } from '../../../packages/analytics/src/fatigu
 import { relativeHistogram } from '../../../packages/analytics/src/histogram.js';
 import { entryQuality, MIN_TYPE_SAMPLES } from '../../../packages/analytics/src/entry-quality.js';
 import { buildHeatmap, slowestCells, MIN_CELL_SAMPLES } from '../../../packages/analytics/src/heatmap.js';
-import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, patternDrill, drillTierForRecord, DEFAULT_DRILL_TIER, DRILL_TIERS } from '../../../packages/training/src/drills.js';
+import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, patternDrill, automaticityDrill, drillTierForRecord, DEFAULT_DRILL_TIER, DRILL_TIERS } from '../../../packages/training/src/drills.js';
 import { skillOf, skillCellFromId } from '../../../packages/training/src/skills.js';
-import { drillReviewOutcome, reviewQueue, SKILL_REVIEW_MIN_SOLVES, SKILL_REVIEW_FAST_MS } from '../../../packages/training/src/reviews.js';
+import { drillReviewOutcome, drillReviewEligible, reviewQueue, SKILL_REVIEW_MIN_SOLVES, SKILL_REVIEW_FAST_MS } from '../../../packages/training/src/reviews.js';
+import { gauntletPlan, gauntletLaunch, gauntletGenerator } from '../../../packages/training/src/gauntlet.js';
 import { scoreChartSvg, chartLayout, nearestIndex, CHART } from './score-chart.js';
 import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
@@ -39,6 +40,7 @@ let currentReplay=null;
 let currentDrill=null;
 const heatmapState={op:'mul',scope:'benchmark',focus:{row:0,col:0},selected:null};
 let currentSeed='';
+let lastPreset=null;  // last gauntlet/stage launch: "Play again" must re-launch it, not rebuild rules from a payloadless drill
 let lastResult=null;
 
 async function refresh() {
@@ -52,8 +54,32 @@ async function refresh() {
   $('#plan-steps').innerHTML=plan.steps.map((x,i)=>`<div class="step"><span class="step-num">${i+1}</span><span class="step-title">${esc(x.title)}</span><span class="step-time">${x.minutes} min</span></div>`).join('');
   renderAnalytics();
   renderReviewQueue();
+  renderGauntlet();
 }
 
+// Weakness gauntlet (F32): select weakest gated cells → tier-aware drill per cell → same-family
+// transfer probe on a fresh day-scoped seed → hand-off to one standard benchmark. The plan is pure
+// data from packages/training/src/gauntlet.js; this panel only renders it and launches stages.
+function renderGauntlet(){
+  const root=$('#gauntlet-panel'); if(!root)return;
+  let plan=null, planError=null;
+  try{plan=gauntletPlan(sessions,{reviews:skillReviews,now:new Date()});}
+  catch(error){planError=error.message;}
+  const rows=plan?.cells?.map(c=>`<div class="review-row"><span class="review-label">${esc(c.label)}</span><span class="review-meta">×${c.ratio.toFixed(2)} vs ${opNames[c.op]} median · ${c.count} solves · ${esc(c.evidence)} · next set ${esc(DRILL_TIERS[c.tier])}</span><span class="gauntlet-actions"><button type="button" class="secondary-btn" data-gauntlet-launch="${esc(c.cell)}" data-gauntlet-stage="train">Drill ${c.train.seconds}s <span aria-hidden="true">↗</span></button><button type="button" class="secondary-btn" data-gauntlet-launch="${esc(c.cell)}" data-gauntlet-stage="probe">Probe ${c.probe.seconds}s <span aria-hidden="true">↗</span></button></span></div>`).join('');
+  root.innerHTML=`<div class="section-header"><div><div class="eyebrow">WEAKNESS GAUNTLET · TRAIN → PROBE → BENCHMARK</div><h2 class="section-title">Weakness gauntlet</h2></div><span class="tag">${plan?.cells?.length??0} TARGET${plan?.cells?.length===1?'':'S'}</span></div>
+    ${planError?`<p class="secondary">Plan unavailable: ${esc(planError)}</p>`:rows?`<p class="secondary">Today's quota drills your slowest reliably-observed patterns, then probes each family with fresh problems from an independent seed — unseen draws, same range — so you can tell whether the practice held. Finish with one standard 120-second benchmark to measure transfer on real mixed pace.</p>
+    <div class="review-list">${rows}</div>
+    <div class="subline"><button type="button" class="primary-btn" id="gauntlet-benchmark">Finish with standard benchmark ↗</button></div>`:`<div class="empty">${esc(plan?.emptyNote??'No gauntlet data yet.')}</div>`}
+    <p class="small muted">Quota: at most two categories per gauntlet day (the shrunken ratio decides order, ≥3 solves to qualify). The probe day-scopes its seed — the same day replays the probe, a new day draws a fresh one. Everything here is practice: probes and drills never enter benchmark scores, and probes never write spaced reviews. No evidence yet that gauntlet training lifts benchmark scores (F21/F22 evaluate transfer).</p>`;
+  root.querySelectorAll('[data-gauntlet-launch]').forEach(btn=>btn.addEventListener('click',()=>{
+    const cellId=btn.dataset.gauntletLaunch, stage=btn.dataset.gauntletStage;
+    try {
+      const launch=gauntletLaunch(plan,cellId,stage);
+      startGame({preset:{mode:launch.mode,rules:launch.rules,seed:launch.seed,varied:launch.varied,drill:launch.drill}});
+    } catch(error){alert(error.message);}
+  }));
+  $('#gauntlet-benchmark')?.addEventListener('click',()=>{$('#mode').value='benchmark';updateMode();startGame();});
+}
 // Due pattern reviews (F19): the queue reads persisted nextReviewAt records and launches a
 // cell-limited pattern drill. Due = next review at or before now. Records only appear after drill
 // runs or imports, so a new account sees an honest empty state, not fabricated homework.
@@ -99,14 +125,17 @@ function updateMode() {
   $('#duration').value={benchmark:'120',sprint:'30',endurance:'300'}[mode]||$('#duration').value;
   $$('#ops input').forEach(x=>x.disabled=!['custom','isolation'].includes(mode));
 }
-function startGame({ replay=null, drill=null }={}) {
+function startGame({ replay=null, drill=null, preset=null }={}) {
   if(currentSession?.state==='active')return;
-  const mode=drill?'drill':replay?'replay':$('#mode').value;
+  // A preset is a fully built launch (rules + seed + drill payload) from a training module — the
+  // gauntlet panel. The mode picker path is unchanged; presets phase in without touching it.
+  const mode=preset?.mode ?? (drill?'drill':replay?'replay':$('#mode').value);
   let rules, weights=null, generator=null;
   const seconds=Number($('#duration').value);
   const selected=getOps();
   try {
-    if(mode==='benchmark')rules=BENCHMARK_RULES;
+    if(preset){rules=preset.rules;drill={...preset.drill};weights=null;lastPreset=preset;}
+    else if(mode==='benchmark')rules=BENCHMARK_RULES;
     else if(mode==='adaptive') {const selection=chooseAdaptive(sessions,seconds);rules=selection.rules;weights=selection.weights;}
     else if(mode==='custom')rules=customRules({durationSeconds:seconds,enabled:selected});
     else if(mode==='isolation')rules=operationDrill(selected[0],seconds);
@@ -114,21 +143,25 @@ function startGame({ replay=null, drill=null }={}) {
     else if(mode==='endurance')rules=enduranceRules(300);
     else if(mode==='replay')rules=customRules({durationSeconds:120});
     // Drill launches come in as skill cells; the tier (F18) rides along when the launch comes from
-    // the review queue and defaults to the full pattern (2) on heatmap/hand-built launches.
-    else if(mode==='drill')rules=patternDrill(drill,60,{tier:drill.tier});
+    // the review queue and defaults to the full pattern (2) on heatmap/hand-built launches. The
+    // 'flash' stage (F31) runs the automaticity drill; gauntlet probes (F32) always arrive via the
+    // preset path below and are never rebuilt here.
+    else if(mode==='drill')rules=drill.stage==='flash'?automaticityDrill(drill,60):patternDrill(drill,60,{tier:drill.tier});
   } catch(error){alert(error.message);return;}
-  currentSeed=$('#seed').value.trim() || crypto.randomUUID();
+  currentSeed=(preset?.seed ?? $('#seed').value.trim()) || crypto.randomUUID();
+  if(preset?.seed)$('#seed').value=preset.seed; // probes are reproducible for their day; show that
   if(replay) {
     let index=0;
     const items=replay.map(q=>makeQuestion(q.op,q.sourceLeft,q.sourceRight,++index));
     let cursor=0;
     generator=()=>{const q=items[cursor%items.length];cursor++;return {...q,id:`replay-${cursor}`,sequence:cursor};};
-  } else generator=createGenerator(rules,currentSeed,weights);
+  } else if(preset) generator=gauntletGenerator(preset,currentSeed);
+  else generator=createGenerator(rules,currentSeed,weights);
   currentMode=mode; currentReplay=replay; currentDrill=drill;
-  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.id??drill.key,label:drill.label,tier:drill.tier??DEFAULT_DRILL_TIER}:null});
+  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.cell??drill.id??drill.key,label:drill.label,tier:drill.tier??DEFAULT_DRILL_TIER,stage:drill.stage}:null});
   currentSession.start();
   $('#idle-layout').classList.add('hidden');$('#top-metrics').classList.add('hidden');$('#results').classList.add('hidden');$('#game').classList.remove('hidden');
-  $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':mode==='drill'?`DRILL · ${rules.label} · PRACTICE`:`${mode.toUpperCase()} PRACTICE`;
+  $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':mode==='drill'?(drill?.stage==='probe'?`TRANSFER PROBE · ${rules.label} · PRACTICE`:drill?.stage==='flash'?`FLASH · ${rules.label} · PRACTICE`:`DRILL · ${rules.label} · PRACTICE`):`${mode.toUpperCase()} PRACTICE`;
   $('#game-score').innerHTML='0 <small>correct</small>';
   $('#answer').value='';
   updateQuestion(); renderTick(); clearInterval(tick); tick=setInterval(renderTick,60);
@@ -142,6 +175,8 @@ function updateQuestion() {
 function renderTick() {
   if(currentSession?.state!=='active')return;
   const ms=currentSession.tick();
+  // A flash drill (F31) expires slow questions: clear the stale answer and show the next problem.
+  if(currentSession.consumeExpiry()){$('#answer').value='';updateQuestion();}
   $('#timer').textContent=durationFormat(ms);
   $('#time-fill').style.width=(100*ms/(currentSession.rules.durationSeconds*1000)).toFixed(2)+'%';
   if(currentSession.state==='finished')finishGame(false);
@@ -173,29 +208,37 @@ async function finishGame(endedEarly) {
   const stats=sessionStats(result);
   const typology=errorTypology(result.events);
   const hidden=result.integrity?.hiddenMs>0?` · tab hidden ${fmt(result.integrity.hiddenMs)} (clock kept running)`:'';
-  $('#result-detail').innerHTML=`<p class="secondary">${result.events.length} solved · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}${hidden}</p>${typologyHtml(typology)}${drillReviewLine(drillReview)}`;
+  $('#result-detail').innerHTML=`<p class="secondary">${result.events.length} solved${result.missedCount?` · ${result.missedCount} missed the per-question flash cap`:''} · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}${hidden}</p>${typologyHtml(typology)}${drillReviewLine(drillReview)}`;
   await refresh();
 }
 /**
- * The review outcome of one finished drill run, persisted. Returns null when the run was not a
- * pattern drill, or `drillReviewOutcome` says a run had too little evidence (or was interrupted), in
- * which case nothing is written and the results panel says so.
+ * The review outcome of one finished drill run, persisted. Eligibility (complete pattern drill
+ * only; probes and flash drills never record) comes from `drillReviewEligible` in reviews.js.
+ * Returns null when the run was not a drill, or `drillReviewOutcome` says a run had too little
+ * evidence (or was interrupted), in which case nothing is written and the results panel says so.
  */
 async function recordDrillReview(result) {
-  const cellId=result?.drill?.cell;
-  if(!cellId)return null;
-  const label=skillCellFromId(cellId)?.label??cellId;
-  const cellEvents=(result.events??[]).filter(e=>skillOf(e)?.id===cellId);
-  const outcome=drillReviewOutcome(cellEvents,{endedEarly:result.endedEarly});
-  if(!outcome)return {label,outcome:null,solveCount:cellEvents.length,endedEarly:result.endedEarly};
-  const record=await recordSkillReview(cellId,outcome.wasFastAndCorrect,result.finishedAt);
-  return {label,outcome,...outcome,record};
+  const eligible = drillReviewEligible(result);
+  const cellId = eligible.cellId ?? null;
+  const label = skillCellFromId(cellId)?.label ?? cellId;
+  if (!eligible.ok) {
+    const cellEvents = (result.events ?? []).filter(e => skillOf(e)?.id === cellId);
+    return { label, outcome: null, solveCount: cellEvents.length, endedEarly: result.endedEarly === true, reason: eligible.reason };
+  }
+  const cellEvents = (result.events ?? []).filter(e => skillOf(e)?.id === eligible.cellId);
+  const outcome = drillReviewOutcome(cellEvents, { endedEarly: result.endedEarly === true });
+  if (!outcome) return { label, outcome: null, solveCount: cellEvents.length, endedEarly: result.endedEarly === true, reason: 'thin-evidence' };
+  const record = await recordSkillReview(eligible.cellId, outcome.wasFastAndCorrect, result.finishedAt);
+  return { label, outcome, ...outcome, record };
 }
 /** Plain-language spacing note for the drill result panel; no claims about score gains. */
 function drillReviewLine(review) {
   if(!review)return '';
   if(!review.outcome){
-    const why=review.endedEarly?'run ended early — interrupted drills schedule nothing':`${review.solveCount} finished problem${review.solveCount===1?'':'s'} in the cell — a review needs at least ${SKILL_REVIEW_MIN_SOLVES}`;
+    const why=review.reason==='probe'?'a transfer probe is a measurement and never records reviews'
+      :review.reason==='flash'?'automaticity drills do not drive the spaced ladder'
+      :review.reason==='ended-early'?'run ended early — interrupted drills schedule nothing'
+      :`${review.solveCount} finished problem${review.solveCount===1?'':'s'} in the cell — a review needs at least ${SKILL_REVIEW_MIN_SOLVES}`;
     return `<p class="small muted">No review recorded · ${esc(review.label)}: ${esc(why)}.</p>`;
   }
   const due=new Date(review.record.nextReviewAt).toLocaleDateString();
@@ -405,7 +448,8 @@ function cellDetailHtml(c,h){
   return `<h3 class="cell-title">${esc(c.label)}</h3>
     <dl class="cell-stats"><dt>Solved</dt><dd>${c.count} <span class="muted">(${esc(c.evidence)})</span></dd><dt>Median</dt><dd>${fmt(c.medianMs)}</dd><dt>95% CI of median</dt><dd>${ci}</dd><dt>Smoothed relative speed</dt><dd>${rel}</dd><dt>Not clean entry</dt><dd>${c.flawedShare===null?'—':Math.round(100*c.flawedShare)+'%'}</dd></dl>
     <button type="button" class="primary-btn" id="drill-cell">Drill ${esc(c.label)} · 60s practice ↗</button>
-    <p class="small muted">Drills only show problems from this cell and are saved as practice. They never count toward benchmark scores, and they're excluded from the benchmark-only heatmap. A finished 60-second drill records a spaced review for this pattern (speed-based), and later drills auto-tune: a lapse narrows to the easier half of the cell, four consecutive fast runs stretch into the neighboring band (Train tab → due reviews).</p>`;
+    <button type="button" class="secondary-btn" id="flash-cell">Automaticity drill · flash 60s ↗</button>
+    <p class="small muted">Drills only show problems from this cell and are saved as practice. They never count toward benchmark scores, and they're excluded from the benchmark-only heatmap. A finished 60-second drill records a spaced review for this pattern (speed-based), and later drills auto-tune: a lapse narrows to the easier half of the cell, four consecutive fast runs stretch into the neighboring band (Train tab → due reviews). The automaticity drill adds a 2-second flash cap per question and does not feed that ladder.</p>`;
 }
 function renderHeatmap(){
   const root=$('#heatmap-root'); if(!root)return;
@@ -448,6 +492,11 @@ function renderHeatmap(){
     setView('train');showIdle();
     startGame({drill:{op:h.op,id:selectedCell.key,label:selectedCell.label,rowRange:selectedCell.rowRange,colRange:selectedCell.colRange}});
   });
+  $('#flash-cell')?.addEventListener('click',()=>{
+    setView('train');showIdle();
+    // F31: latency-bound flash run; `stage:'flash'` marks it so the spaced ladder ignores it.
+    startGame({drill:{op:h.op,id:selectedCell.key,label:selectedCell.label,rowRange:selectedCell.rowRange,colRange:selectedCell.colRange,stage:'flash'}});
+  });
 }
 function selectCell(row,col,focus){
   heatmapState.selected={row,col};heatmapState.focus={row,col};syncHeatmapHash();renderHeatmap();
@@ -483,7 +532,11 @@ function bind(){
   $('#answer').addEventListener('keydown',e=>{if(e.key==='Enter'&&currentSession?.state==='active'){currentSession.markWrongSubmission();e.preventDefault();}});
   document.addEventListener('visibilitychange',()=>{currentSession?.recordVisibility(document.hidden);if(!document.hidden)renderTick();});
   $('#finish').addEventListener('click',()=>finishGame(true));
-  $('#again').addEventListener('click',()=>{showIdle();startGame({replay:currentReplay,drill:currentDrill});});
+  $('#again').addEventListener('click',()=>{
+    showIdle();
+    if(lastPreset)startGame({preset:lastPreset});
+    else startGame({replay:currentReplay,drill:currentDrill});
+  });
   $('#analyze-result').addEventListener('click',()=>{showIdle();setView('analytics');});
   $$('#lesson-filters button').forEach(button=>button.addEventListener('click',()=>{$$('#lesson-filters button').forEach(b=>b.classList.toggle('selected',b===button));renderLessons(button.dataset.op);}));
 }

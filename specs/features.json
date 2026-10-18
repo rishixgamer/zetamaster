@@ -1,674 +1,674 @@
 {
-  "schemaVersion": 1,
-  "product": "ZetaMaster",
-  "featureCount": 55,
-  "statusLegend": {
-    "implemented": "Usable in current web app (may still have audit tasks)",
-    "partial": "Code/data/infra exists but not complete",
-    "planned": "Backlog only, with specified acceptance criteria"
+ "schemaVersion": 1,
+ "product": "ZetaMaster",
+ "featureCount": 55,
+ "statusLegend": {
+  "implemented": "Usable in current web app (may still have audit tasks)",
+  "partial": "Code/data/infra exists but not complete",
+  "planned": "Backlog only, with specified acceptance criteria"
+ },
+ "features": [
+  {
+   "id": "F01",
+   "area": "Core",
+   "title": "Default arithmetic simulator",
+   "status": "implemented",
+   "owner": "core",
+   "acceptance": [
+    "120s preset and inverse operations; parity audited against original client 2026-10-17 (docs/PARITY_AUDIT.md, tests/parity.test.js); remaining deviations: strict timer cutoff and PRNG"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
   },
-  "features": [
-    {
-      "id": "F01",
-      "area": "Core",
-      "title": "Default arithmetic simulator",
-      "status": "implemented",
-      "owner": "core",
-      "acceptance": [
-        "120s preset and inverse operations; parity audited against original client 2026-10-17 (docs/PARITY_AUDIT.md, tests/parity.test.js); remaining deviations: strict timer cutoff and PRNG"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F02",
-      "area": "Core",
-      "title": "Custom training mode",
-      "status": "partial",
-      "owner": "web/core",
-      "acceptance": [
-        "Operation and duration selection works; extend exposed operand ranges and feedback settings"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F03",
-      "area": "Core",
-      "title": "Standardized benchmark mode",
-      "status": "implemented",
-      "owner": "core/web",
-      "acceptance": [
-        "Immutable default rules; practice and early termination never count as standard"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F04",
-      "area": "Core",
-      "title": "Seeded tests and replay",
-      "status": "partial",
-      "owner": "core/web",
-      "acceptance": [
-        "Deterministic generator and slow-question replay; add sequence history replays"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F05",
-      "area": "Core",
-      "title": "Input optimization",
-      "status": "partial",
-      "owner": "web",
-      "acceptance": [
-        "Auto-answer and keyboard focus work; add configurable keypad and sound"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F06",
-      "area": "Core",
-      "title": "Offline-first PWA",
-      "status": "implemented",
-      "owner": "web/storage",
-      "acceptance": [
-        "App caches core assets; sessions stored locally and training runs offline after installation"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F07",
-      "area": "Analytics",
-      "title": "Per-question telemetry",
-      "status": "implemented",
-      "owner": "core",
-      "acceptance": [
-        "Record operands timing changes and corrections; explicitly label first-key proxy; wrong-prefix, full-wrong-answer, paste and visibility telemetry defined in docs/TELEMETRY.md"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F08",
-      "area": "Analytics",
-      "title": "Operation-specific analysis",
-      "status": "implemented",
-      "owner": "analytics/web",
-      "acceptance": [
-        "Counts and median times for all four operations"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F09",
-      "area": "Analytics",
-      "title": "Arithmetic heatmaps",
-      "status": "implemented",
-      "owner": "analytics/web",
-      "acceptance": [
-        "Accessible interactive heatmap grid per operation with keyboard navigation, sample counts, median latencies, CI, benchmark-only scope, deep links and cell drills"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F10",
-      "area": "Analytics",
-      "title": "Difficulty classification",
-      "status": "partial",
-      "owner": "core",
-      "acceptance": [
-        "Multiple classification tags; validate taxonomy and extend harder patterns"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F11",
-      "area": "Analytics",
-      "title": "Speed accuracy analysis",
-      "status": "implemented",
-      "owner": "analytics/web",
-      "acceptance": [
-        "Entry-quality typology (clean/revision/slip/calculation) on results",
-        "Latency-stratified analytics view across standard benchmark runs: per-type rates with counts, operation-adjusted time cost (ratio vs clean entry and seconds lost per run) with median CIs, first-key vs typing split (labeled proxy), per-operation breakdown gated at 3 solves, and Theil-Sen trend of the calculation share (needs 6 runs); practice/drills excluded by default and engine-1 fallback disclosed"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F12",
-      "area": "Analytics",
-      "title": "Performance timeline",
-      "status": "implemented",
-      "owner": "analytics/web",
-      "acceptance": [
-        "Benchmark-only trajectory, recent median, personal best"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F13",
-      "area": "Analytics",
-      "title": "Fatigue analysis",
-      "status": "implemented",
-      "owner": "analytics",
-      "acceptance": [
-        "Operation-adjusted relative time by quarter of the run with CIs, plus paired second-half vs first-half shift across standard runs (docs/FATIGUE.md)"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F14",
-      "area": "Analytics",
-      "title": "Question replay",
-      "status": "implemented",
-      "owner": "web/core",
-      "acceptance": [
-        "Replay slowest five attempts with original operands outside benchmark"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F15",
-      "area": "Analytics",
-      "title": "Statistical confidence",
-      "status": "implemented",
-      "owner": "analytics",
-      "acceptance": [
-        "Shrinkage and distribution-free median CIs on heatmap cells, operation summaries and recent scores; Sen trend interval; percentile band visualization; sample-size gates throughout"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F16",
-      "area": "Adaptive",
-      "title": "Automatic bottleneck identification",
-      "status": "partial",
-      "owner": "analytics",
-      "acceptance": [
-        "Operation and tag weaknesses from historical event stream with sample warnings"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F17",
-      "area": "Adaptive",
-      "title": "Intelligent drill generation",
-      "status": "implemented",
-      "owner": "training",
-      "acceptance": [
-        "Skill-cell drills launch from the heatmap cell detail and the due-review queue (Train tab) and run as mode 'drill' with pinned operand ranges, id 'pattern-drill' and an honest explanation; results never upgrade to benchmark (benchmarkEquivalent false, pinned); daily plan surfaces the weakest stable pattern when its data exists; difficulty tiers are F18, cross-operation pattern mixes and efficacy evaluation (F21/F22) are separate features and remain out of scope here"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F18",
-      "area": "Adaptive",
-      "title": "Adaptive difficulty",
-      "status": "implemented",
-      "owner": "training",
-      "acceptance": [
-        "Pattern drills have three difficulty tiers (Narrow = lower half of each band, Full = the exact cell and the default, Stretch = full cell plus exactly one adjacent band on one axis, capped at the benchmark operand space for the four double-top cells); the tier is chosen across runs from the F19 review record's success streak (0 = Narrow, 1-3 or no usable evidence = Full, >= 4 = Stretch), never mid-run, so one run's generated pool and per-run review stay interpretable; tier-1/2 draws map to exactly the drilled cell and a stretch interleaves exactly its two adjacent cells (both occur in seeded draws); every tier stays practice-only (id 'pattern-drill', benchmarkEquivalent false, benchmark ruleset untouched); explicitly out of scope: in-run difficulty adaptation, cross-operation pattern mixes (the generator draws from one rectangle per operation), calibrated mastery modeling and any efficacy claim (F21/F22)"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F19",
-      "area": "Adaptive",
-      "title": "Spaced repetition",
-      "status": "implemented",
-      "owner": "training",
-      "acceptance": [
-        "Pure scheduling primitive is deterministic with explicit now; per-skill review records persist in IndexedDB schema v2 (additive store) with capped localStorage fallback, sanitized/versioned imports and v2 export bundle; every completed pattern drill records one review (interrupted or under-3-solve runs record nothing) whose success rule is at least half the run's in-cell solves at or under the shared AUTOMATICITY_MS 2000 line (nearest-rank median, pinned edge by edge); a due-review queue on the Train tab prompts at-or-overdue records and launches their cells; review outcomes measure speed only (the engine does not persist wrong attempts) and the 1-60 day ladder is a heuristic, not a validated model"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F20",
-      "area": "Adaptive",
-      "title": "Personalized mastery model",
-      "status": "partial",
-      "owner": "analytics",
-      "acceptance": [
-        "Transparent smoothed proxy exists; calibrate probabilistic model on held-out sessions"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F21",
-      "area": "Adaptive",
-      "title": "Score-improvement prioritization",
-      "status": "partial",
-      "owner": "training",
-      "acceptance": [
-        "Priority heuristic exists; compare predicted versus observed training gains"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F22",
-      "area": "Adaptive",
-      "title": "Automatic plateau detection",
-      "status": "partial",
-      "owner": "analytics",
-      "acceptance": [
-        "Conservative plateau signal exists; add intervention and evaluation protocol"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F23",
-      "area": "Curriculum",
-      "title": "Addition techniques",
-      "status": "partial",
-      "owner": "curriculum",
-      "acceptance": [
-        "Instruction examples exist; add interactive step completion and transfer tests"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F24",
-      "area": "Curriculum",
-      "title": "Subtraction techniques",
-      "status": "partial",
-      "owner": "curriculum",
-      "acceptance": [
-        "Rounding and complements examples exist; add timed lesson drills"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F25",
-      "area": "Curriculum",
-      "title": "Multiplication techniques",
-      "status": "partial",
-      "owner": "curriculum",
-      "acceptance": [
-        "Distributive, \u00d79, \u00d711 and halve examples; expand complete instruction path"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F26",
-      "area": "Curriculum",
-      "title": "Division techniques",
-      "status": "partial",
-      "owner": "curriculum",
-      "acceptance": [
-        "Inverse and factoring examples; add validated practice variants"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F27",
-      "area": "Curriculum",
-      "title": "Strategy selection training",
-      "status": "planned",
-      "owner": "curriculum/training",
-      "acceptance": [
-        "Compare two mental algorithms on matched unseen examples"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F28",
-      "area": "Curriculum",
-      "title": "Interactive worked examples",
-      "status": "partial",
-      "owner": "curriculum/web",
-      "acceptance": [
-        "Readable steps exist; add interactive prompts with feedback"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F29",
-      "area": "Curriculum",
-      "title": "Optional AI math coach",
-      "status": "planned",
-      "owner": "services",
-      "acceptance": [
-        "Opt-in explanations checked by deterministic arithmetic verification; no answer grading by LLM"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F30",
-      "area": "Modes",
-      "title": "Speed intervals",
-      "status": "implemented",
-      "owner": "training/web",
-      "acceptance": [
-        "30-second sprint preset; add sets and recovery intervals"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F31",
-      "area": "Modes",
-      "title": "Cognitive automaticity training",
-      "status": "planned",
-      "owner": "training",
-      "acceptance": [
-        "Latency-bound fact drills that vary stimulus and avoid rote sequence recall"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F32",
-      "area": "Modes",
-      "title": "Weakness gauntlet",
-      "status": "planned",
-      "owner": "training",
-      "acceptance": [
-        "Generate fixed quota of slow categories with independent transfer post-test"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F33",
-      "area": "Modes",
-      "title": "Personal-best ghost racing",
-      "status": "planned",
-      "owner": "web/analytics",
-      "acceptance": [
-        "Optional cumulative pace visualization derived from stored benchmark run"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F34",
-      "area": "Coach",
-      "title": "Automatic daily training plans",
-      "status": "partial",
-      "owner": "training/web",
-      "acceptance": [
-        "15-minute routine works; persist completion and optimize allocation"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F35",
-      "area": "Coach",
-      "title": "Long-term progression system",
-      "status": "planned",
-      "owner": "training",
-      "acceptance": [
-        "Explicit 30\u219240\u219250\u219260\u219270+ stages guided by median benchmarks"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F36",
-      "area": "Coach",
-      "title": "Adaptive training volume",
-      "status": "planned",
-      "owner": "training",
-      "acceptance": [
-        "Monitor signs of slowdown; recommendations never force continued practice"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F37",
-      "area": "Coach",
-      "title": "Progress forecasting",
-      "status": "planned",
-      "owner": "analytics",
-      "acceptance": [
-        "Calibrated prediction intervals from longitudinal runs; abstain if inadequate data"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F38",
-      "area": "Coach",
-      "title": "Progress-based recommendations",
-      "status": "partial",
-      "owner": "training/web",
-      "acceptance": [
-        "Weakest operation recommendation works; link to evidence and specific actions"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F39",
-      "area": "Laboratory",
-      "title": "Keystroke analysis",
-      "status": "implemented",
-      "owner": "core/analytics",
-      "acceptance": [
-        "First-input proxy, corrections, wrong prefixes and bounded per-question input traces (captureTrace flag); no UI toggle yet"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F40",
-      "area": "Laboratory",
-      "title": "Hardware calibration",
-      "status": "partial",
-      "owner": "core/web",
-      "acceptance": [
-        "Baseline computation exists; add independent number-copying interface"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F41",
-      "area": "Laboratory",
-      "title": "Response-time distribution modeling",
-      "status": "implemented",
-      "owner": "analytics",
-      "acceptance": [
-        "Adjusted-distribution histogram beside the slow-tail metrics (robust cutoff, slow share, time lost per run, per-operation p50/p90, costliest stalls): fixed log bins [\u00d70.5, 0.75, 1, 1.5, 2, 3, \u221e) lower-edge-inclusive, exact counts/shares beside bars, \u22652\u00d7-typical tail share cross-checked against the shared robust cutoff, Theil\u2013Sen tail-share movement reusing the consistency trend (\u22656 runs), gated below 30 adjusted solves with empty/sparse/engine-1 states (docs/FATIGUE.md)",
-        "Benchmark isolation preserved: the histogram reads verified standard runs only (scope 'benchmark') and no scoring, eligibility or generator code is touched"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F42",
-      "area": "Laboratory",
-      "title": "Arithmetic strategy experiments",
-      "status": "partial",
-      "owner": "training",
-      "acceptance": [
-        "Seeded A/B assignment exists; add balanced items and outcome testing"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F43",
-      "area": "Laboratory",
-      "title": "Performance consistency scoring",
-      "status": "implemented",
-      "owner": "analytics",
-      "acceptance": [
-        "8-of-10 70+ goal with progress, 8th-best gap, minimum runs-to-goal, rolling median and 10th-90th band chart, Theil-Sen trend; standard benchmarks only (docs/CONSISTENCY.md)"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F44",
-      "area": "Community",
-      "title": "Ranking system",
-      "status": "planned",
-      "owner": "community",
-      "acceptance": [
-        "Sustained verified benchmark ranks separated from practice ranks"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F45",
-      "area": "Community",
-      "title": "Skill-based achievements",
-      "status": "planned",
-      "owner": "community",
-      "acceptance": [
-        "Grant goals based on correct verified events; avoid rewarding idle screen time"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F46",
-      "area": "Community",
-      "title": "Global leaderboards",
-      "status": "planned",
-      "owner": "services",
-      "acceptance": [
-        "Explicit opt-in server verified rankings with abuse and privacy protections"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F47",
-      "area": "Community",
-      "title": "Challenge sharing",
-      "status": "planned",
-      "owner": "services/web",
-      "acceptance": [
-        "Share ruleset+seed via URL; ensure no PII in shared links"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F48",
-      "area": "Experience",
-      "title": "Minimalist keyboard-first design",
-      "status": "implemented",
-      "owner": "web",
-      "acceptance": [
-        "Focused answer entry, responsive layout, optional browser PWA install"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": true
-    },
-    {
-      "id": "F49",
-      "area": "Quant",
-      "title": "Fractions and decimals",
-      "status": "partial",
-      "owner": "quant",
-      "acceptance": [
-        "Separate quant generator scaffold; expand exact rational representations"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F50",
-      "area": "Quant",
-      "title": "Probability arithmetic",
-      "status": "partial",
-      "owner": "quant",
-      "acceptance": [
-        "EV prototype exists; add verified probability and combinatorics drill bank"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F51",
-      "area": "Quant",
-      "title": "Percentages and finance",
-      "status": "partial",
-      "owner": "quant",
-      "acceptance": [
-        "Percentage and basis-point generators exist; add explicit quant UI and feedback"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F52",
-      "area": "Quant",
-      "title": "Estimation training",
-      "status": "planned",
-      "owner": "quant",
-      "acceptance": [
-        "Range-based tolerance with verified numerical bounds and justification"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F53",
-      "area": "Quant",
-      "title": "Running arithmetic",
-      "status": "planned",
-      "owner": "quant",
-      "acceptance": [
-        "Stateful sequence generator with deterministic intermediate answers"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F54",
-      "area": "Quant",
-      "title": "Historical 80-in-8 training",
-      "status": "planned",
-      "owner": "quant",
-      "acceptance": [
-        "Separate format and scoring based on documented historical question style"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    },
-    {
-      "id": "F55",
-      "area": "Quant",
-      "title": "Market-making simulations",
-      "status": "planned",
-      "owner": "quant",
-      "acceptance": [
-        "Simple expected-value quoting game with separate skill metrics"
-      ],
-      "dependencies": [],
-      "benchmarkSafe": false
-    }
-  ]
+  {
+   "id": "F02",
+   "area": "Core",
+   "title": "Custom training mode",
+   "status": "partial",
+   "owner": "web/core",
+   "acceptance": [
+    "Operation and duration selection works; extend exposed operand ranges and feedback settings"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F03",
+   "area": "Core",
+   "title": "Standardized benchmark mode",
+   "status": "implemented",
+   "owner": "core/web",
+   "acceptance": [
+    "Immutable default rules; practice and early termination never count as standard"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F04",
+   "area": "Core",
+   "title": "Seeded tests and replay",
+   "status": "partial",
+   "owner": "core/web",
+   "acceptance": [
+    "Deterministic generator and slow-question replay; add sequence history replays"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F05",
+   "area": "Core",
+   "title": "Input optimization",
+   "status": "partial",
+   "owner": "web",
+   "acceptance": [
+    "Auto-answer and keyboard focus work; add configurable keypad and sound"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F06",
+   "area": "Core",
+   "title": "Offline-first PWA",
+   "status": "implemented",
+   "owner": "web/storage",
+   "acceptance": [
+    "App caches core assets; sessions stored locally and training runs offline after installation"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F07",
+   "area": "Analytics",
+   "title": "Per-question telemetry",
+   "status": "implemented",
+   "owner": "core",
+   "acceptance": [
+    "Record operands timing changes and corrections; explicitly label first-key proxy; wrong-prefix, full-wrong-answer, paste and visibility telemetry defined in docs/TELEMETRY.md"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F08",
+   "area": "Analytics",
+   "title": "Operation-specific analysis",
+   "status": "implemented",
+   "owner": "analytics/web",
+   "acceptance": [
+    "Counts and median times for all four operations"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F09",
+   "area": "Analytics",
+   "title": "Arithmetic heatmaps",
+   "status": "implemented",
+   "owner": "analytics/web",
+   "acceptance": [
+    "Accessible interactive heatmap grid per operation with keyboard navigation, sample counts, median latencies, CI, benchmark-only scope, deep links and cell drills"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F10",
+   "area": "Analytics",
+   "title": "Difficulty classification",
+   "status": "partial",
+   "owner": "core",
+   "acceptance": [
+    "Multiple classification tags; validate taxonomy and extend harder patterns"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F11",
+   "area": "Analytics",
+   "title": "Speed accuracy analysis",
+   "status": "implemented",
+   "owner": "analytics/web",
+   "acceptance": [
+    "Entry-quality typology (clean/revision/slip/calculation) on results",
+    "Latency-stratified analytics view across standard benchmark runs: per-type rates with counts, operation-adjusted time cost (ratio vs clean entry and seconds lost per run) with median CIs, first-key vs typing split (labeled proxy), per-operation breakdown gated at 3 solves, and Theil-Sen trend of the calculation share (needs 6 runs); practice/drills excluded by default and engine-1 fallback disclosed"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F12",
+   "area": "Analytics",
+   "title": "Performance timeline",
+   "status": "implemented",
+   "owner": "analytics/web",
+   "acceptance": [
+    "Benchmark-only trajectory, recent median, personal best"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F13",
+   "area": "Analytics",
+   "title": "Fatigue analysis",
+   "status": "implemented",
+   "owner": "analytics",
+   "acceptance": [
+    "Operation-adjusted relative time by quarter of the run with CIs, plus paired second-half vs first-half shift across standard runs (docs/FATIGUE.md)"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F14",
+   "area": "Analytics",
+   "title": "Question replay",
+   "status": "implemented",
+   "owner": "web/core",
+   "acceptance": [
+    "Replay slowest five attempts with original operands outside benchmark"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F15",
+   "area": "Analytics",
+   "title": "Statistical confidence",
+   "status": "implemented",
+   "owner": "analytics",
+   "acceptance": [
+    "Shrinkage and distribution-free median CIs on heatmap cells, operation summaries and recent scores; Sen trend interval; percentile band visualization; sample-size gates throughout"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F16",
+   "area": "Adaptive",
+   "title": "Automatic bottleneck identification",
+   "status": "partial",
+   "owner": "analytics",
+   "acceptance": [
+    "Operation and tag weaknesses from historical event stream with sample warnings"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F17",
+   "area": "Adaptive",
+   "title": "Intelligent drill generation",
+   "status": "implemented",
+   "owner": "training",
+   "acceptance": [
+    "Skill-cell drills launch from the heatmap cell detail and the due-review queue (Train tab) and run as mode 'drill' with pinned operand ranges, id 'pattern-drill' and an honest explanation; results never upgrade to benchmark (benchmarkEquivalent false, pinned); daily plan surfaces the weakest stable pattern when its data exists; difficulty tiers are F18, cross-operation pattern mixes and efficacy evaluation (F21/F22) are separate features and remain out of scope here"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F18",
+   "area": "Adaptive",
+   "title": "Adaptive difficulty",
+   "status": "implemented",
+   "owner": "training",
+   "acceptance": [
+    "Pattern drills have three difficulty tiers (Narrow = lower half of each band, Full = the exact cell and the default, Stretch = full cell plus exactly one adjacent band on one axis, capped at the benchmark operand space for the four double-top cells); the tier is chosen across runs from the F19 review record's success streak (0 = Narrow, 1-3 or no usable evidence = Full, >= 4 = Stretch), never mid-run, so one run's generated pool and per-run review stay interpretable; tier-1/2 draws map to exactly the drilled cell and a stretch interleaves exactly its two adjacent cells (both occur in seeded draws); every tier stays practice-only (id 'pattern-drill', benchmarkEquivalent false, benchmark ruleset untouched); explicitly out of scope: in-run difficulty adaptation, cross-operation pattern mixes (the generator draws from one rectangle per operation), calibrated mastery modeling and any efficacy claim (F21/F22)"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F19",
+   "area": "Adaptive",
+   "title": "Spaced repetition",
+   "status": "implemented",
+   "owner": "training",
+   "acceptance": [
+    "Pure scheduling primitive is deterministic with explicit now; per-skill review records persist in IndexedDB schema v2 (additive store) with capped localStorage fallback, sanitized/versioned imports and v2 export bundle; every completed pattern drill records one review (interrupted or under-3-solve runs record nothing) whose success rule is at least half the run's in-cell solves at or under the shared AUTOMATICITY_MS 2000 line (nearest-rank median, pinned edge by edge); a due-review queue on the Train tab prompts at-or-overdue records and launches their cells; review outcomes measure speed only (the engine does not persist wrong attempts) and the 1-60 day ladder is a heuristic, not a validated model"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F20",
+   "area": "Adaptive",
+   "title": "Personalized mastery model",
+   "status": "partial",
+   "owner": "analytics",
+   "acceptance": [
+    "Transparent smoothed proxy exists; calibrate probabilistic model on held-out sessions"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F21",
+   "area": "Adaptive",
+   "title": "Score-improvement prioritization",
+   "status": "partial",
+   "owner": "training",
+   "acceptance": [
+    "Priority heuristic exists; compare predicted versus observed training gains"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F22",
+   "area": "Adaptive",
+   "title": "Automatic plateau detection",
+   "status": "partial",
+   "owner": "analytics",
+   "acceptance": [
+    "Conservative plateau signal exists; add intervention and evaluation protocol"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F23",
+   "area": "Curriculum",
+   "title": "Addition techniques",
+   "status": "partial",
+   "owner": "curriculum",
+   "acceptance": [
+    "Instruction examples exist; add interactive step completion and transfer tests"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F24",
+   "area": "Curriculum",
+   "title": "Subtraction techniques",
+   "status": "partial",
+   "owner": "curriculum",
+   "acceptance": [
+    "Rounding and complements examples exist; add timed lesson drills"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F25",
+   "area": "Curriculum",
+   "title": "Multiplication techniques",
+   "status": "partial",
+   "owner": "curriculum",
+   "acceptance": [
+    "Distributive, \u00d79, \u00d711 and halve examples; expand complete instruction path"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F26",
+   "area": "Curriculum",
+   "title": "Division techniques",
+   "status": "partial",
+   "owner": "curriculum",
+   "acceptance": [
+    "Inverse and factoring examples; add validated practice variants"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F27",
+   "area": "Curriculum",
+   "title": "Strategy selection training",
+   "status": "planned",
+   "owner": "curriculum/training",
+   "acceptance": [
+    "Compare two mental algorithms on matched unseen examples"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F28",
+   "area": "Curriculum",
+   "title": "Interactive worked examples",
+   "status": "partial",
+   "owner": "curriculum/web",
+   "acceptance": [
+    "Readable steps exist; add interactive prompts with feedback"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F29",
+   "area": "Curriculum",
+   "title": "Optional AI math coach",
+   "status": "planned",
+   "owner": "services",
+   "acceptance": [
+    "Opt-in explanations checked by deterministic arithmetic verification; no answer grading by LLM"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F30",
+   "area": "Modes",
+   "title": "Speed intervals",
+   "status": "implemented",
+   "owner": "training/web",
+   "acceptance": [
+    "30-second sprint preset; add sets and recovery intervals"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F31",
+   "area": "Modes",
+   "title": "Cognitive automaticity training",
+   "status": "implemented",
+   "owner": "training",
+   "acceptance": [
+    "Automaticity ('flash') drill on any heatmap cell: engine-enforced per-question latency budget (questionBudgetMs, default the shared AUTOMATICITY_MS 2000 line; slow questions record as missedEvents, never scored, next question gets a fresh window), seeded generator wrapped in varyStimulus so no fact repeats back to back (avoids rote sequence recall; degenerate single-fact ranges cap redraws instead of hanging), stage 'flash' pinned so flash runs never write spaced-repetition reviews, benchmark ruleset byte-identical and imported sessions unaffected"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F32",
+   "area": "Modes",
+   "title": "Weakness gauntlet",
+   "status": "implemented",
+   "owner": "training",
+   "acceptance": [
+    "Gauntlet plan (packages/training/src/gauntlet.js) selects at most two skill cells per day that clear the sample gate with shrunken ratio > 1 (weakest first, deterministic, never a sub-gate or fast cell), drills each with the F18 tier ladder on random seeds, probes each family with fresh same-range problems from a day-scoped seed that is never the training seed and a varyStimulus generator, hands off to one standard benchmark; every stage is a practice ruleset (benchmarkEquivalent false, pinned byte-identity of BENCHMARK_RULES) and 'Play again' relaunches the stage; explicit out-of-scope: efficacy claims and in-run adaptation (F21/F22)"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F33",
+   "area": "Modes",
+   "title": "Personal-best ghost racing",
+   "status": "planned",
+   "owner": "web/analytics",
+   "acceptance": [
+    "Optional cumulative pace visualization derived from stored benchmark run"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F34",
+   "area": "Coach",
+   "title": "Automatic daily training plans",
+   "status": "partial",
+   "owner": "training/web",
+   "acceptance": [
+    "15-minute routine works; persist completion and optimize allocation"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F35",
+   "area": "Coach",
+   "title": "Long-term progression system",
+   "status": "planned",
+   "owner": "training",
+   "acceptance": [
+    "Explicit 30\u219240\u219250\u219260\u219270+ stages guided by median benchmarks"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F36",
+   "area": "Coach",
+   "title": "Adaptive training volume",
+   "status": "planned",
+   "owner": "training",
+   "acceptance": [
+    "Monitor signs of slowdown; recommendations never force continued practice"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F37",
+   "area": "Coach",
+   "title": "Progress forecasting",
+   "status": "planned",
+   "owner": "analytics",
+   "acceptance": [
+    "Calibrated prediction intervals from longitudinal runs; abstain if inadequate data"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F38",
+   "area": "Coach",
+   "title": "Progress-based recommendations",
+   "status": "partial",
+   "owner": "training/web",
+   "acceptance": [
+    "Weakest operation recommendation works; link to evidence and specific actions"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F39",
+   "area": "Laboratory",
+   "title": "Keystroke analysis",
+   "status": "implemented",
+   "owner": "core/analytics",
+   "acceptance": [
+    "First-input proxy, corrections, wrong prefixes and bounded per-question input traces (captureTrace flag); no UI toggle yet"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F40",
+   "area": "Laboratory",
+   "title": "Hardware calibration",
+   "status": "partial",
+   "owner": "core/web",
+   "acceptance": [
+    "Baseline computation exists; add independent number-copying interface"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F41",
+   "area": "Laboratory",
+   "title": "Response-time distribution modeling",
+   "status": "implemented",
+   "owner": "analytics",
+   "acceptance": [
+    "Adjusted-distribution histogram beside the slow-tail metrics (robust cutoff, slow share, time lost per run, per-operation p50/p90, costliest stalls): fixed log bins [\u00d70.5, 0.75, 1, 1.5, 2, 3, \u221e) lower-edge-inclusive, exact counts/shares beside bars, \u22652\u00d7-typical tail share cross-checked against the shared robust cutoff, Theil\u2013Sen tail-share movement reusing the consistency trend (\u22656 runs), gated below 30 adjusted solves with empty/sparse/engine-1 states (docs/FATIGUE.md)",
+    "Benchmark isolation preserved: the histogram reads verified standard runs only (scope 'benchmark') and no scoring, eligibility or generator code is touched"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F42",
+   "area": "Laboratory",
+   "title": "Arithmetic strategy experiments",
+   "status": "partial",
+   "owner": "training",
+   "acceptance": [
+    "Seeded A/B assignment exists; add balanced items and outcome testing"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F43",
+   "area": "Laboratory",
+   "title": "Performance consistency scoring",
+   "status": "implemented",
+   "owner": "analytics",
+   "acceptance": [
+    "8-of-10 70+ goal with progress, 8th-best gap, minimum runs-to-goal, rolling median and 10th-90th band chart, Theil-Sen trend; standard benchmarks only (docs/CONSISTENCY.md)"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F44",
+   "area": "Community",
+   "title": "Ranking system",
+   "status": "planned",
+   "owner": "community",
+   "acceptance": [
+    "Sustained verified benchmark ranks separated from practice ranks"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F45",
+   "area": "Community",
+   "title": "Skill-based achievements",
+   "status": "planned",
+   "owner": "community",
+   "acceptance": [
+    "Grant goals based on correct verified events; avoid rewarding idle screen time"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F46",
+   "area": "Community",
+   "title": "Global leaderboards",
+   "status": "planned",
+   "owner": "services",
+   "acceptance": [
+    "Explicit opt-in server verified rankings with abuse and privacy protections"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F47",
+   "area": "Community",
+   "title": "Challenge sharing",
+   "status": "planned",
+   "owner": "services/web",
+   "acceptance": [
+    "Share ruleset+seed via URL; ensure no PII in shared links"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F48",
+   "area": "Experience",
+   "title": "Minimalist keyboard-first design",
+   "status": "implemented",
+   "owner": "web",
+   "acceptance": [
+    "Focused answer entry, responsive layout, optional browser PWA install"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": true
+  },
+  {
+   "id": "F49",
+   "area": "Quant",
+   "title": "Fractions and decimals",
+   "status": "partial",
+   "owner": "quant",
+   "acceptance": [
+    "Separate quant generator scaffold; expand exact rational representations"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F50",
+   "area": "Quant",
+   "title": "Probability arithmetic",
+   "status": "partial",
+   "owner": "quant",
+   "acceptance": [
+    "EV prototype exists; add verified probability and combinatorics drill bank"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F51",
+   "area": "Quant",
+   "title": "Percentages and finance",
+   "status": "partial",
+   "owner": "quant",
+   "acceptance": [
+    "Percentage and basis-point generators exist; add explicit quant UI and feedback"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F52",
+   "area": "Quant",
+   "title": "Estimation training",
+   "status": "planned",
+   "owner": "quant",
+   "acceptance": [
+    "Range-based tolerance with verified numerical bounds and justification"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F53",
+   "area": "Quant",
+   "title": "Running arithmetic",
+   "status": "planned",
+   "owner": "quant",
+   "acceptance": [
+    "Stateful sequence generator with deterministic intermediate answers"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F54",
+   "area": "Quant",
+   "title": "Historical 80-in-8 training",
+   "status": "planned",
+   "owner": "quant",
+   "acceptance": [
+    "Separate format and scoring based on documented historical question style"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  },
+  {
+   "id": "F55",
+   "area": "Quant",
+   "title": "Market-making simulations",
+   "status": "planned",
+   "owner": "quant",
+   "acceptance": [
+    "Simple expected-value quoting game with separate skill metrics"
+   ],
+   "dependencies": [],
+   "benchmarkSafe": false
+  }
+ ]
 }

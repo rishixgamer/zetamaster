@@ -28,6 +28,25 @@ export function nearestRankMedian(values) {
 }
 
 /**
+ * Which finished drill runs may write a spaced-repetition review record (F19), and why not — one pure
+ * authority so the UI and tests agree. Returns `{ ok: true, cellId, label }` for the only kind of
+ * run that records (a complete, cell-scoped pattern drill), or `{ ok: false, reason }`:
+ * - `not-drill` — not a drill run (benchmark, practice, replay);
+ * - `ended-early` — interrupted runs record nothing (a cut-short review is not evidence);
+ * - `probe` — transfer probes (F32) are measurements, never ladder evidence;
+ * - `flash` — automaticity drills (F31) end questions at the automaticity line, so their solved
+ *   set is pre-filtered to fast answers and would inflate the streak ladder trivially.
+ */
+export function drillReviewEligible(result) {
+  const drill = result?.drill;
+  if (!drill || typeof drill !== 'object' || typeof drill.cell !== 'string') return { ok: false, reason: 'not-drill' };
+  if (result.endedEarly === true) return { ok: false, reason: 'ended-early', cellId: drill.cell, label: drill.label ?? null };
+  if (drill.stage === 'probe') return { ok: false, reason: 'probe', cellId: drill.cell, label: drill.label ?? null };
+  if (drill.stage === 'flash') return { ok: false, reason: 'flash', cellId: drill.cell, label: drill.label ?? null };
+  return { ok: true, cellId: drill.cell, label: drill.label ?? null };
+}
+
+/**
  * Decide whether a finished drill run records a review, and its outcome. Pure; no clock input needed
  * (the caller passes the run's own finishedAt as the review's `now`).
  *

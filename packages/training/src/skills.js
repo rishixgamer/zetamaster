@@ -137,3 +137,21 @@ export function weakestSkillCell(sessions, { scope = 'all', minSamples = MIN_CEL
   }
   return best;
 }
+
+const OP_RANK = Object.freeze(['add', 'sub', 'mul', 'div']);
+const cellRank = skill => OP_RANK.indexOf(skill.op) * 1e6 + skill.row * 1e3 + skill.col;
+
+/**
+ * The `limit` most reliably-observed slow cells, slowest first (F32 gauntlet selection; the
+ * single-cell `weakestSkillCell` stays the planner'spick). Same gate as `weakestSkillCell`:
+ * `count >= minSamples` and a shrunken ratio above 1, ties resolved to the rollup order (op
+ * add→sub→mul→div, then row, then col); below the gate or at ratio ≤ 1 a cell is never "weak" —
+ * no speculative selection on thin or average data. Planning heuristic, not a diagnosis.
+ */
+export function weakestSkillCells(sessions, { scope = 'all', limit = 2, minSamples = MIN_CELL_SAMPLES } = {}) {
+  const { skills } = skillRollups(sessions, { scope });
+  return skills
+    .filter(s => s.count >= minSamples && s.ratio !== null && s.ratio > 1)
+    .sort((a, b) => b.ratio - a.ratio || cellRank(a) - cellRank(b))
+    .slice(0, Math.max(0, Math.trunc(limit)));
+}
