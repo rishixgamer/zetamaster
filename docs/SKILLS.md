@@ -217,6 +217,52 @@ per-run speed review (above) to be interpretable, so the tier applies between ru
 record — the UI shows the tier in the review queue, on the drill's ruleset label, and in the
 result-panel line naming the next drill's difficulty.
 
+## Daily plan: persisted completion, exact-minute budget and plateau branches (F34/F22, slice 5)
+
+The plan itself is regenerated from history on every refresh so it can react to new evidence;
+what persists is only what you did. One completion record per **local day** lives in the
+`dailyPlans` IndexedDB store (schema v3, see `docs/ARCHITECTURE.md`), keyed `'YYYY-MM-DD'`:
+
+```js
+{ id: '2026-10-18', date: '2026-10-18', targetMinutes: 15,
+  steps: [{ id: 'warmup', minutes: 3, completed: true, completedAt: ISO8601 }, …],
+  completedMinutes: 5, // recomputed from the steps, never trusted on import
+  updatedAt: ISO8601 }
+```
+
+Records carry **no score fields by design** — import sanitization
+(`sanitizeImportedDailyPlan`) whitelist-reconstructs each record, recomputes
+`completedMinutes` from the steps, rejects impossible dates/ids/minutes, and imports of a
+v3 bundle round-trip them. `dayLogKey` formats keys with a pinned `en-CA` locale (local
+calendar day — a UTC key would roll over mid-evening for users west of UTC).
+
+- **Exact-minute budget** (`allocateBudget`, largest-remainder method): the five steps
+  `warmup → targeted → lesson → sprint → reflect` split the target* minutes summing
+  **exactly** to the target, weighted 1 / 2 / 1.25 / 1 / 1 by default — a transparent
+  weighting, not a fitted optimizer. The gauntlet branch pushes targeted to 3.2 and
+  method-work raises lesson to 1.6; ties resolve to step order.
+- **Leftover semantics**: floors plus biggest-remainder distribution; `allocateBudget(0)`
+  is all zeros, and non-integer or zero total weights throw rather than invent shares.
+- **Plateau branches** (F22, `packages/training/src/plateau.js`): the conservative
+  `detectPlateau` signal (possible-plateau over a pinned 12-run split) selects between
+  three pre-named branches, deterministically from record evidence — `gauntlet-rotate`
+  when a stable weak skill-cell pattern exists (≥ 8 solves, shrunken ratio > 1),
+  `method-work` when a diagnosed slow operation/tag shows method headroom (≥ 5 solves)
+  but no reliable cell, `consistency-rest` when nothing diagnosable stands out. The
+  branch rides the plan as `{ name, why, actions }` with the evidence in `why` — the
+  UI labels it "a hypothesis to test, not a proven treatment".
+- **Coverage** (F38 surface, `skillCoverage`): of the 420-cell taxonomy
+  (10×10 add/sub + 11×10 mul/div), how many cells any history touches at all (≥ 1 solve)
+  and how many carry stable evidence (≥ 8 solves), split per operation. The Train tab
+  shows `patterns observed N of 420 · stable evidence M`. Scope-safe: 'benchmark' reads
+  only verified standard runs, practice counts only via scope 'all'.
+- **Recommendations** (F38): the plan rationale references the exact evidence names —
+  slowest gated pattern with ratio and solve count, the intervention branch's `why`, and
+  the coverage line — and the Train tab's progress line renders each branch's `actions`
+  as concrete next steps (`next: weakness gauntlet → transfer probe → standard
+  benchmark`), so the recommendation names what to do rather than a vague "practice
+  more"; recommendation surfaces degrade gracefully with no data.
+
 ## What this slice does not claim
 
 - No evidence yet that pattern drills improve benchmark scores; that measurement (train/holdout and
@@ -228,6 +274,10 @@ result-panel line naming the next drill's difficulty.
 - Cross-operation pattern mixing does not exist: the generator draws from one rectangle per
   operation family, so v1 "mix" is interleaving one cell with its adjacent band only. A generator
   extension (and its own parity audit) would precede any multi-operation pattern drill.
+  exact-minutes weighting toward the selected branch, largest-remainder split; branches are
+  hypotheses from record evidence, not measured treatments (F21/F22 evaluate them).
+- The coverage meter describes *reach* (how much of the 420-cell taxonomy the history has touched),
+  not ability or mastery; a high share is not an achievement metric and stable evidence ≠ skill.
 - Review outcomes measure **speed only**. The engine does not persist wrong attempts (the F07
   correction-semantics follow-up), so "fast *and* correct" reduces, in practice, to the speed rule
   above; lapses are "recall was not automatic", not "answers were wrong".

@@ -119,7 +119,7 @@ test('sessions and skill records live in separate namespaces and cannot cross ov
 test('export bundle shape includes skill records and parses both shapes', () => {
   const record = BASE_RECORD();
   const bundle = exportBundle([playBenchmark()], [record]);
-  assert.equal(bundle.schema, 'zetamaster-export-v2');
+  assert.equal(bundle.schema, 'zetamaster-export-v3', 'v3 adds dailyPlans; v1/v2 inputs still parse');
   assert.ok(bundle.exportedAt.startsWith('2026'));
   assert.equal(bundle.sessions.length, 1);
   assert.deepEqual(bundle.skillReviews, [record]);

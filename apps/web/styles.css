@@ -64,3 +64,9 @@ tr.hist-tail .bar>div{background:#d95926}
 .content-grid>.gauntlet-panel{grid-column:1/-1}
 .gauntlet-actions{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
 .gauntlet-actions .secondary-btn{min-height:38px;padding:6px 13px;font-size:12px;margin-left:0}
+
+/* Daily plan checkboxes (F34): ticks persist per local day; rows keep the step rhythm */
+.plan-step{display:flex;align-items:center;gap:10px}
+.plan-step input[type="checkbox"]{accent-color:#a7f3d0;width:16px;height:16px;flex:none;margin:0}
+.plan-step label{display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0}
+.plan-step .step-title{flex:1;min-width:0}

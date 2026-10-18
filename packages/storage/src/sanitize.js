@@ -52,6 +52,45 @@ export function parseSkillId(id) {
   return cell === null ? null : { id: cell.id, op: cell.op, row: cell.row, col: cell.col };
 }
 
+const PLAN_STEP_ID_PATTERN = /^[a-z][a-z0-9-]{0,23}$/;
+const MAX_PLAN_STEPS = 20;
+
+/**
+ * Validate an imported daily-plan completion record (F34). Plan records hold NO score data by
+ * design — only what was done: the local-day key, the target budget, per-step minutes and completed
+ * flags. Anything that would smuggle in score-like or schedule-like fields is dropped silently
+ * (whitelist reconstruction). Returns null when unusable; `completedMinutes` is recomputed from the
+ * steps, never trusted.
+ */
+export function sanitizeImportedDailyPlan(s) {
+  if (!s || typeof s !== 'object') return null;
+  if (typeof s.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) return null;
+  const dateUtc = new Date(`${s.date}T00:00:00.000Z`);
+  if (Number.isNaN(dateUtc.getTime()) || dateUtc.toISOString().slice(0, 10) !== s.date) return null; // rejects impossible dates
+  if (!Number.isSafeInteger(s.targetMinutes) || s.targetMinutes < 0 || s.targetMinutes > 600) return null;
+  if (!Array.isArray(s.steps) || s.steps.length > MAX_PLAN_STEPS) return null;
+  const steps = [];
+  for (const step of s.steps) {
+    if (!step || typeof step !== 'object' || step === null) return null;
+    if (typeof step.id !== 'string' || !PLAN_STEP_ID_PATTERN.test(step.id)) return null;
+    if (!Number.isSafeInteger(step.minutes) || step.minutes < 0 || step.minutes > 600) return null;
+    if (typeof step.completed !== 'boolean') return null;
+    if (step.completedAt !== null && (typeof step.completedAt !== 'string' || Number.isNaN(Date.parse(step.completedAt)))) return null;
+    steps.push({
+      id: step.id, minutes: step.minutes, completed: step.completed,
+      ...(step.completed ? { completedAt: new Date(Date.parse(step.completedAt)).toISOString() } : { completedAt: null }),
+    });
+  }
+  // Duplicate step ids would corrupt per-step reconciliation.
+  if (new Set(steps.map(x => x.id)).size !== steps.length) return null;
+  const completedMinutes = steps.reduce((a, x) => a + (x.completed ? x.minutes : 0), 0);
+  return {
+    id: s.date, date: s.date, targetMinutes: s.targetMinutes,
+    steps, completedMinutes,
+    updatedAt: typeof s.updatedAt === 'string' && !Number.isNaN(Date.parse(s.updatedAt)) ? new Date(Date.parse(s.updatedAt)).toISOString() : null,
+  };
+}
+
 /**
  * Validate an imported session. Returns null when unusable. Benchmark status is recomputed from the
  * rules snapshot, mode and duration — an imported `benchmark: true` flag is never trusted on its own.

@@ -19,8 +19,9 @@ import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { LESSONS } from '../../../packages/curriculum/src/lessons.js';
 import { suggestLesson } from '../../../packages/curriculum/src/explanations.js';
-import { listSessions, saveSession, deleteAllSessions, importSessions, importSkillReviews, listSkillReviews, recordSkillReview } from '../../../packages/storage/src/db.js';
+import { listSessions, saveSession, deleteAllSessions, importSessions, importSkillReviews, listSkillReviews, recordSkillReview, listDailyPlans, saveDailyPlan, importDailyPlans, deleteAllDailyPlans } from '../../../packages/storage/src/db.js';
 import { downloadJson, downloadCsv, exportBundle, parseExportBundle } from '../../../packages/storage/src/export.js';
+import { reconcilePlan, togglePlanStep, completedMinutes, dayLogKey, planRecordFrom } from '../../../packages/training/src/daylog.js';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -31,6 +32,8 @@ const durationFormat = ms => { const seconds=Math.ceil(Math.max(0,ms)/1000);retu
 const getOps=()=>$$('#ops input:checked').map(x=>x.value);
 let sessions=[];
 let skillReviews=[];   // persisted per-skill spaced-repetition records (F19)
+let dailyPlanRecords=[]; // persisted per-day plan completion (F34)
+let lastPlanSteps=null; // reconciled steps of the currently rendered plan (completion writes re-serialize them)
 let drillReview=null;  // the spaced-review outcome of the drill that just finished, for the results panel
 let currentSession=null;
 let tick=null;
@@ -46,15 +49,45 @@ let lastResult=null;
 async function refresh() {
   sessions=await listSessions();
   skillReviews=await listSkillReviews().catch(()=>[]);
+  dailyPlanRecords=await listDailyPlans().catch(()=>[]);
   const p=benchmarkProgress(sessions);
   const values=[p.personalBest??'—',p.recentMedian??'—',p.count,'70+'];
   $$('#top-metrics .metric strong').forEach((el,i)=>el.textContent=values[i]);
-  const plan=dailyPlan(sessions);
-  $('#plan-rationale').textContent=plan.rationale;
-  $('#plan-steps').innerHTML=plan.steps.map((x,i)=>`<div class="step"><span class="step-num">${i+1}</span><span class="step-title">${esc(x.title)}</span><span class="step-time">${x.minutes} min</span></div>`).join('');
+  renderDailyPlan();
   renderAnalytics();
   renderReviewQueue();
   renderGauntlet();
+}
+
+// Daily plan (F34): steps regenerate from history every refresh; only *completion* persists (one
+// record per local day in the dailyPlans store). Checkboxes bind to that record, so ticks survive
+// reloads, and the budget is an exact-minutes split weighted toward the weakest operation/branch.
+// Branch action codes map to plain-language next steps so the recommendation names what to do
+// (F38) while staying honest that none of it is a measured treatment.
+const PLAN_ACTION_LABELS={gauntlet:'weakness gauntlet','transfer-probe':'transfer probe','curriculum-lesson':'technique lesson','isolation-practice':'isolation practice','standard-benchmark':'standard benchmark',rest:'planned rest between runs'};
+function interventionLine(intervention){
+  return intervention?` · Suggested intervention: ${esc(intervention.name)} (a hypothesis to test, not a proven treatment) — next: ${intervention.actions.map(a=>esc(PLAN_ACTION_LABELS[a]??a)).join(' → ')}`:'';
+}
+function renderDailyPlan() {
+  const plan=dailyPlan(sessions);
+  const todayKey=dayLogKey(new Date());
+  const record=dailyPlanRecords.find(x=>x?.id===todayKey) ?? null;
+  const steps=reconcilePlan(plan.steps,record);
+  lastPlanSteps=steps;
+  const done=completedMinutes(steps);
+  const coverageLine=plan.coverage.observedCells
+    ?`patterns observed ${plan.coverage.observedCells} of ${plan.coverage.totalCells} · stable evidence ${plan.coverage.stableCells} (describes reach, not ability)`
+    :'no skill-pattern data yet — the plan starts operation-level until cells fill in';
+  $('#plan-rationale').textContent=plan.rationale;
+  $('#plan-steps').innerHTML=steps.map((x,i)=>`<div class="step plan-step"><input type="checkbox" id="plan-step-${esc(x.id)}" data-plan-step="${esc(x.id)}" aria-label="${esc(`${x.title}, ${x.minutes} minutes`)}" ${x.completed?'checked':''}><label for="plan-step-${esc(x.id)}"><span class="step-num">${i+1}</span><span class="step-title">${esc(x.title)}</span></label><span class="step-time">${x.minutes} min</span></div>`).join('');
+  const setPlanProgress=minutesDone=>{$('#plan-progress').innerHTML=`<p class="small muted">Today: ${minutesDone} / ${plan.targetMinutes} min logged · ${esc(coverageLine)}${interventionLine(plan.intervention)}</p>`;};
+  setPlanProgress(done);
+  $('#plan-steps').querySelectorAll('[data-plan-step]').forEach(box=>box.addEventListener('change',async()=>{
+    const updated=togglePlanStep(lastPlanSteps,box.dataset.planStep,box.checked,new Date().toISOString());
+    lastPlanSteps=updated;
+    await saveDailyPlan(planRecordFrom(updated,{dateKey:todayKey,targetMinutes:plan.targetMinutes,updatedAt:new Date().toISOString()})).catch(()=>{});
+    setPlanProgress(completedMinutes(updated));
+  }));
 }
 
 // Weakness gauntlet (F32): select weakest gated cells → tier-aware drill per cell → same-family
@@ -279,7 +312,7 @@ function renderAnalytics(){
     if(!slow.length)return;
     setView('train');showIdle();startGame({replay:slow});
   });
-  $('#export-json').addEventListener('click',async()=>downloadJson('zetamaster-sessions.json',exportBundle(sessions,await listSkillReviews().catch(()=>[]))));
+  $('#export-json').addEventListener('click',async()=>downloadJson('zetamaster-sessions.json',exportBundle(sessions,await listSkillReviews().catch(()=>[]),dailyPlanRecords)));
   $('#export-csv').addEventListener('click',()=>downloadCsv('zetamaster-sessions.csv',sessions));
   $('#import-json').addEventListener('click',()=>$('#import-file').click());
   $('#import-file').addEventListener('change',async e=>{
@@ -289,15 +322,16 @@ function renderAnalytics(){
       const records=parseExportBundle(parsed);
       if(!records)throw new Error('No sessions found in the file.');
       const count=await importSessions(records);
-      let reviews=0;
+      let reviews=0, plans=0;
       if(parsed && typeof parsed==='object' && Array.isArray(parsed.skillReviews)) reviews=(await importSkillReviews(parsed.skillReviews)).imported;
+      if(parsed && typeof parsed==='object' && Array.isArray(parsed.dailyPlans)) plans=(await importDailyPlans(parsed.dailyPlans)).imported;
       await refresh();
-      alert(`Imported ${count} sessions${reviews?` and ${reviews} skill review records`:''}.`);
+      alert(`Imported ${count} sessions${reviews?`, ${reviews} skill review records`:''}${plans?` and ${plans} daily plan records`:''}.`);
     }
     catch(error){alert(`Import failed: ${error.message}`);}
   });
   $('#clear-history').addEventListener('click',async()=>{
-    if(confirm('Permanently delete all ZetaMaster session history on this device?')){await deleteAllSessions();await refresh();}
+    if(confirm('Permanently delete all ZetaMaster session history on this device?')){await deleteAllSessions();await deleteAllDailyPlans().catch(()=>{});await refresh();}
   });
 }
 const signed=v=>`${v>0?'+':v<0?'−':'±'}${Math.abs(v).toFixed(1)}`;

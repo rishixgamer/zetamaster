@@ -1,20 +1,23 @@
-import { sanitizeImportedSession, sanitizeImportedSkillReview } from './sanitize.js';
+import { sanitizeImportedSession, sanitizeImportedSkillReview, sanitizeImportedDailyPlan } from './sanitize.js';
 import { skillReviewRecord } from '../../training/src/scheduler.js';
 const DATABASE='zetamaster-v1';
 const FALLBACK_KEY='zetamaster-sessions-v1';
 const REVIEW_KEY='zetamaster-skill-reviews-v1';
+const PLAN_KEY='zetamaster-daily-plans-v1';
 const MAX_FALLBACK=500;
 const REVIEW_STORE='skillReviews';
-/** Storage schema 2 adds the versioned skill-review store (F19). Additive only: existing 'sessions'
- * data is untouched by onupgradeneeded, so v1 users upgrade in place. Opening this schema from an
- * older cached page would fail with a version error; the service-worker cache bump keeps pages fresh. */
-const STORAGE_VERSION=2;
+const PLAN_STORE='dailyPlans';
+/** Storage schema 2 added the versioned skill-review store (F19); schema 3 adds the daily-plan
+ * completion store (F34). Additive only: existing stores are untouched by onupgradeneeded, so v1
+ * users upgrade in place. Opening this schema from an older cached page would fail with a version
+ * error; the service-worker cache bump keeps pages fresh. */
+const STORAGE_VERSION=3;
 
 function open() {
   return new Promise((resolve,reject)=>{
     if(!('indexedDB' in globalThis)) {reject(new Error('IndexedDB unavailable'));return;}
     const req=indexedDB.open(DATABASE,STORAGE_VERSION);
-    req.onupgradeneeded=()=>{const db=req.result; if(!db.objectStoreNames.contains('sessions'))db.createObjectStore('sessions',{keyPath:'id'}); if(!db.objectStoreNames.contains(REVIEW_STORE))db.createObjectStore(REVIEW_STORE,{keyPath:'id'});};
+    req.onupgradeneeded=()=>{const db=req.result; if(!db.objectStoreNames.contains('sessions'))db.createObjectStore('sessions',{keyPath:'id'}); if(!db.objectStoreNames.contains(REVIEW_STORE))db.createObjectStore(REVIEW_STORE,{keyPath:'id'}); if(!db.objectStoreNames.contains(PLAN_STORE))db.createObjectStore(PLAN_STORE,{keyPath:'id'});};
     req.onsuccess=()=>resolve(req.result);
     req.onerror=()=>reject(req.error);
   });
@@ -91,4 +94,33 @@ export async function importSkillReviews(records) {
     await saveSkillReview(r); imported++;
   }
   return { imported, dropped, total: records.length };
+}
+
+// Daily-plan completion records (F34, schema 3): one record per local day, no score data by
+// design. Same discipline as above — IndexedDB first, capped localStorage fallback, sanitized and
+// whitelist-reconstructed imports.
+export async function listDailyPlans() {
+  try{return await transact(PLAN_STORE,'readonly',store=>store.getAll());}
+  catch{return fallbackRead(PLAN_KEY);}
+}
+export async function saveDailyPlan(record) {
+  try{await transact(PLAN_STORE,'readwrite',store=>store.put(record));}
+  catch{fallbackWrite(PLAN_KEY,[...fallbackRead(PLAN_KEY).filter(r=>r?.id!==record?.id),record]);}
+  return record;
+}
+export async function importDailyPlans(records) {
+  if(!Array.isArray(records))throw new Error('Import must be an array');
+  if(records.length>5000)throw new Error('Import exceeds 5,000 daily-plan records');
+  let imported=0, dropped=0;
+  for(const raw of records){
+    const r=sanitizeImportedDailyPlan(raw);
+    if(!r){dropped++;continue;}
+    await saveDailyPlan(r); imported++;
+  }
+  return { imported, dropped, total: records.length };
+}
+/** Removes the day's completion record (only locally, and only when the user deletes history). */
+export async function deleteAllDailyPlans() {
+  try{await transact(PLAN_STORE,'readwrite',store=>store.clear());}catch{}
+  try{localStorage.removeItem(PLAN_KEY);}catch{}
 }
