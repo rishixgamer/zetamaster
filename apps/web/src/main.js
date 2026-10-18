@@ -21,6 +21,7 @@ import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { buildRecommendations } from '../../../packages/training/src/recommendations.js';
 import { comparePolicies } from '../../../packages/training/src/policies.js';
 import { LESSONS } from '../../../packages/curriculum/src/lessons.js';
+import { planForLesson, askPlan, transferPlan, checkGuideAnswer, guideDrillTarget, GUIDE_MODES, GUIDE_LESSON_IDS } from '../../../packages/curriculum/src/guides.js';
 import { suggestLesson } from '../../../packages/curriculum/src/explanations.js';
 import { listSessions, saveSession, deleteAllSessions, importSessions, importSkillReviews, listSkillReviews, recordSkillReview, listDailyPlans, saveDailyPlan, importDailyPlans, deleteAllDailyPlans } from '../../../packages/storage/src/db.js';
 import { downloadJson, downloadCsv, exportBundle, parseExportBundle } from '../../../packages/storage/src/export.js';
@@ -659,9 +660,134 @@ function applyHeatmapHash(){
   heatmapState.selected=parsed.cell;heatmapState.focus=parsed.cell??{row:0,col:0};
   setView('analytics');return true;
 }
-function renderLessons(filter='all') {
-  const list=filter==='all'?LESSONS:LESSONS.filter(l=>l.operation===filter);
-  $('#lessons').innerHTML=list.map(l=>`<article class="lesson-card"><div class="eyebrow">${esc(opNames[l.operation])}</div><h3>${esc(l.title)}</h3><div class="lesson-equation">${esc(l.example)}</div><ol>${l.steps.map(step=>`<li>${esc(step)}</li>`).join('')}</ol><strong>Answer: ${l.result}</strong></article>`).join('');
+// Interactive guided lessons (M3 slice 1, F23–F25): untimed step-by-step rehearsal of the Academy
+// technique cards. All arithmetic comes from packages/curriculum/src/guides.js (pinned by
+// tests/guides.test.js against the cards' own example text — nothing is inferred here); the mode
+// chips pick guided / partial / independent asking, transfer draws fresh seeded problems for the
+// same technique, and the hand-off reuses the existing drill launch path so every run stays
+// practice-only and no new score surface, persistence or timing exists in this panel.
+const academy={lessonId:null,mode:'guided',seed:null,transfer:false,asking:0,done:false,message:''};
+const ACADEMY_MODE_LABELS={guided:'Guided',partial:'Reveal steps',independent:'On my own'};
+const ACADEMY_NO_DRILL={'multiply-halve':'The ×25 pair never occurs in the benchmark operand space (25 is not a 2–12 table factor), so no pattern drill exists for it.'};
+
+/** Card-example operand parser for canonical rehearsal, independent of the technique modules. */
+function academyCardOperands(lesson){
+  const match=/^(\d+) ([+−×÷]) (\d+)$/.exec(lesson.example);
+  return match?{a:Number(match[1]),b:Number(match[3])}:null;
+}
+function academyPlan(){
+  const lesson=LESSONS.find(l=>l.id===academy.lessonId);
+  if(!lesson)return null;
+  if(academy.transfer&&academy.seed)return transferPlan(lesson.id,academy.seed);
+  const operands=academyCardOperands(lesson);
+  return operands?planForLesson(lesson.id,operands.a,operands.b):null;
+}
+function academyInputTarget(plan,ask){
+  if(academy.done)return null;
+  if(!ask.showSteps)return {prompt:plan.final.prompt,answer:plan.final.answer};
+  const step=plan.steps[academy.asking];
+  return step?{prompt:step.prompt,answer:step.answer}:null;
+}
+function academyResetProgress(){
+  const plan=academyPlan();
+  const ask=plan?askPlan(plan,academy.mode):null;
+  Object.assign(academy,{asking:ask?ask.asks[0]:0,done:false,message:''});
+}
+function academyCheck(raw){
+  const plan=academyPlan();if(!plan)return;
+  const ask=askPlan(plan,academy.mode);
+  const target=academyInputTarget(plan,ask);if(!target)return;
+  if(!checkGuideAnswer(raw,target.answer)){academy.message='Not this one — recompute and re-enter.';renderLessons();return;}
+  const next=ask.asks.find(index=>index>academy.asking);
+  if(next===undefined)academy.done=true;
+  else academy.asking=next;
+  academy.message='';
+  renderLessons();
+}
+function academyToggle(id){
+  if(academy.lessonId===id)academy.lessonId=null;
+  else Object.assign(academy,{lessonId:id,transfer:false,seed:null});
+  academyResetProgress();
+  renderLessons();
+}
+function academyMode(id,mode){
+  if(!GUIDE_MODES.includes(mode))return;
+  Object.assign(academy,{lessonId:id,mode}); // same problem, restart the rehearsal for the new asking
+  academyResetProgress();
+  renderLessons();
+}
+function academyTransfer(id){
+  Object.assign(academy,{lessonId:id,transfer:true,seed:crypto.randomUUID()});
+  academyResetProgress();
+  renderLessons();
+}
+function academyStepRow(step,index,ask,plan){
+  const done=academy.done;
+  if(!ask.showSteps)return '';
+  const complete=index<academy.asking||ask.asks.every(i=>i!==index)||done;
+  const isCurrent=!done&&index===academy.asking&&ask.asks.includes(index);
+  if(complete)return `<div class="academy-step"><span class="prompt">${esc(step.prompt)}</span><span class="reveal">= ${esc(step.answer)}</span></div>`;
+  if(isCurrent)return `<div class="academy-step"><span class="prompt">${esc(step.prompt)}</span><input id="academy-answer" type="text" inputmode="numeric" autocomplete="off" maxlength="${MAX_FIELD}" placeholder="?" aria-label="answer for ${esc(step.prompt)}">${index===plan.steps.length-1&&academy.mode==='partial'?'<span class="subline-inline">the composition — finish it yourself</span>':''}<button type="button" class="secondary-btn" data-academy-check>Check</button></div>`;
+  return `<div class="academy-step"><span class="prompt">${esc(step.prompt)}</span><span class="reveal-muted">= ?</span></div>`;
+}
+function academyHtml(lesson){
+  const open=academy.lessonId===lesson.id;
+  const toggle=`<div class="academy-actions"><button type="button" class="secondary-btn" data-academy-open="${esc(lesson.id)}">${open?'Hide practice':'Practice step by step'} <span aria-hidden="true">↗</span></button></div>`;
+  if(!open)return toggle;
+  const plan=academyPlan();
+  if(!plan)return `${toggle}<div class="academy"><p class="secondary">No practice plan for this problem right now — its operands are outside the technique's rehearsed range. Use the card example or draw a new problem.</p></div>`;
+  const ask=askPlan(plan,academy.mode);
+  const canDrill=guideDrillTarget(lesson.id,plan.a,plan.b);
+  const chips=GUIDE_MODES.map(m=>`<button type="button" class="chip ${m===academy.mode?'selected':''}" data-academy-mode="${m}" data-academy-chip-lesson="${esc(lesson.id)}">${ACADEMY_MODE_LABELS[m]}</button>`).join('');
+  const rows=academy.mode==='independent'?'':plan.steps.map((step,i)=>academyStepRow(step,i,ask,plan)).join('');
+  const target=academyInputTarget(plan,ask);
+  const resultLine=academy.done?`<div class="academy-step academy-complete"><span>✓ ${esc(plan.result)} — the steps compose to the card's answer.</span></div>`
+    :`<div class="academy-step" id="academy-message" aria-live="polite">${academy.message?esc(academy.message):''}</div>`;
+  // Guided/partial modes answer inside the step rows above; only 'independent' needs its own field.
+  const standaloneInput=!ask.showSteps&&!academy.done&&target?`<div class="academy-actions"><input id="academy-answer" type="text" inputmode="numeric" autocomplete="off" maxlength="${MAX_FIELD}" placeholder="?" aria-label="answer for ${esc(target.prompt)}"><button type="button" class="secondary-btn" data-academy-check>Check</button></div>`:'';
+  return `${toggle}
+    <div class="academy">
+      ${chips?`<div class="academy-mode">${chips}</div><p class="academy-note">Switching modes restarts this problem's rehearsal.</p>`:''}
+      <div class="academy-problem">${esc(plan.problemText)}${academy.transfer&&academy.seed?`<code>seed ${esc(academy.seed)}</code>`:''}</div>
+      ${rows}
+      ${academy.mode==='independent'&&!academy.done?`<p class="academy-note">On your own: no worked steps are shown. Enter the full answer straight away.</p>`:''}
+      ${standaloneInput}
+      ${resultLine}
+      <div class="academy-actions">
+        <button type="button" class="secondary-btn" data-academy-transfer="${esc(lesson.id)}">New problem <span aria-hidden="true">↗</span></button>
+        ${canDrill?`<button type="button" class="secondary-btn" data-academy-drill>Drill this pattern · 60 s <span aria-hidden="true">↗</span></button>`:ACADEMY_NO_DRILL[lesson.id]?`<span class="academy-note">${esc(ACADEMY_NO_DRILL[lesson.id])}</span>`:''}
+      </div>
+      <p class="academy-note">Untimed and unscored: the practice run never counts as a benchmark and nothing in this panel is saved. The 60-second drill is a separate practice run on the same operand pattern.</p>
+    </div>`;
+}
+let lessonFilter='all';
+function renderLessons(filter) {
+  if(filter!==undefined)lessonFilter=filter;
+  const list=lessonFilter==='all'?LESSONS:LESSONS.filter(l=>l.operation===lessonFilter);
+  $('#lessons').innerHTML=list.map(l=>{
+    const guided=GUIDE_LESSON_IDS.includes(l.id);
+    const practice=guided?academyHtml(l):'<p class="academy-note">Step-by-step practice for division is not built yet (F26) — this card stays a worked example.</p>';
+    return `<article class="lesson-card"><div class="eyebrow">${esc(opNames[l.operation])}</div><h3>${esc(l.title)}</h3><div class="lesson-equation">${esc(l.example)}</div><ol>${l.steps.map(step=>`<li>${esc(step)}</li>`).join('')}</ol><strong>Answer: ${l.result}</strong>${practice}</article>`;
+  }).join('');
+  bindAcademy($('#lessons'));
+  if(academy.lessonId)$('#academy-answer')?.focus();
+}
+function bindAcademy(root){
+  root.querySelectorAll('[data-academy-open]').forEach(b=>b.addEventListener('click',()=>academyToggle(b.dataset.academyOpen)));
+  root.querySelectorAll('[data-academy-mode]').forEach(b=>b.addEventListener('click',()=>academyMode(b.dataset.academyChipLesson,b.dataset.academyMode)));
+  root.querySelectorAll('[data-academy-transfer]').forEach(b=>b.addEventListener('click',()=>academyTransfer(b.dataset.academyTransfer)));
+  root.querySelectorAll('[data-academy-check]').forEach(b=>b.addEventListener('click',()=>academyCheck($('#academy-answer')?.value??'')));
+  root.querySelectorAll('#academy-answer').forEach(input=>{
+    input.addEventListener('keydown',e=>{if(e.key==='Enter')academyCheck(input.value);});
+    input.addEventListener('input',()=>{if(academy.message){academy.message='';const live=$('#academy-message');if(live)live.textContent='';}});
+  });
+  root.querySelectorAll('[data-academy-drill]').forEach(b=>b.addEventListener('click',()=>{
+    const plan=academyPlan();if(!plan||!academy.lessonId)return;
+    const cell=guideDrillTarget(academy.lessonId,plan.a,plan.b);
+    if(!cell){if(ACADEMY_NO_DRILL[academy.lessonId])alert(ACADEMY_NO_DRILL[academy.lessonId]);return;}
+    setView('train');showIdle();
+    startGame({drill:{...cell}});
+  }));
 }
 function renderRoadmap(){
   const phases=[

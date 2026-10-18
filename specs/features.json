@@ -278,10 +278,14 @@
    "id": "F23",
    "area": "Curriculum",
    "title": "Addition techniques",
-   "status": "partial",
+   "status": "implemented",
    "owner": "curriculum",
    "acceptance": [
-    "Instruction examples exist; add interactive step completion and transfer tests"
+    "Round-and-compensate and left-to-right cards have machine-checkable plans reproducing each card's example step by step (pinned by tests/guides.test.js, including independent per-step recomputation)",
+    "Academy rehearsal runs untimed in three modes - guided (every step), partial (worked steps shown, learner computes the composition), independent (problem only)",
+    "Fresh transfer problems per technique come from a seeded RNG shown with the problem (reproducible, pedagogical domain, not a benchmark distribution)",
+    "Hand-off launches a 60 s pattern drill on the practiced operand pattern through the existing practice surface; always practice-only",
+    "No timed lesson drills, no persistence, no score surface; no claim that lessons raise benchmark scores (F21/F22 evaluates transfer)"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -290,10 +294,13 @@
    "id": "F24",
    "area": "Curriculum",
    "title": "Subtraction techniques",
-   "status": "partial",
+   "status": "implemented",
    "owner": "curriculum",
    "acceptance": [
-    "Rounding and complements examples exist; add timed lesson drills"
+    "Round-minus and complement-to-100 cards have machine-checkable plans pinned to the card examples by tests/guides.test.js; complement keeps the fixed 100 target with non-round two-digit subtrahend",
+    "Untimed guided/partial/independent rehearsal plus seeded transfer draws in the Academy",
+    "Drill hand-off maps subtraction to the generator's source operands (subtrahend, difference), so a hand-off drill matches the practiced pattern, not the composite display",
+    "No timed lesson drills and no efficacy claims; practice runs never enter benchmark metrics"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -302,10 +309,13 @@
    "id": "F25",
    "area": "Curriculum",
    "title": "Multiplication techniques",
-   "status": "partial",
+   "status": "implemented",
    "owner": "curriculum",
    "acceptance": [
-    "Distributive, \u00d79, \u00d711 and halve examples; expand complete instruction path"
+    "Distributive split, x9, x5, x11 and double-and-halve cards have machine-checkable plans (tests/guides.test.js); x9/x5/x11 domains require the exact fixed factor so swapped operands are rejected, never mis-planned",
+    "Untimed guided/partial/independent rehearsal plus seeded transfer draws in the Academy",
+    "Drill hand-off puts the 2-12 table factor first (generator operand order); the double-and-halve card is rehearsal-only by design - its fixed 25 anchor never occurs in the benchmark operand space, so no taxonomy cell or drill exists and the UI says so",
+    "No timed lesson drills and no efficacy claims; x5 halving works because x10 is always even"
    ],
    "dependencies": [],
    "benchmarkSafe": true

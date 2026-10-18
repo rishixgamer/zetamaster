@@ -39,6 +39,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 - Entry-quality panel across standard benchmark runs: per-type rates, operation-adjusted time cost (relative to clean entry and seconds lost per run), a first-key vs typing proxy split, per-operation breakdown with sample gating, and a robust trend of the calculation share ([Entry quality](docs/ENTRY_QUALITY.md)).
 - Local saved session history; separate standard and practice runs; rolling benchmark median, personal best and consistent-70 goal check.
 - Initial adaptive operation weighting, basic diagnostics, and 12 deterministic arithmetic lesson cards.
+- Interactive technique Academy: 9 of the 12 cards (2 addition, 2 subtraction, 5 multiplication) rehearse untimed — guided (compute every step), partial (steps revealed, you finish the composition) and independent (answer straight away) — with fresh seeded transfer problems per technique and a hand-off to a 60-second pattern drill on the same operand pattern; all practice runs, never benchmark metrics. The arithmetic is computed once in deterministic code, pinned by tests to each card's example ([Feature matrix](docs/FEATURE_MATRIX.md)).
 - IndexedDB-first session storage with localStorage fallback, downloadable JSON/CSV, JSON import, and opt-in local history deletion.
 - Installable PWA with offline cache after an initial successful visit (browser permitting).
 - Tests, code-agent instructions, development roadmap and **55 machine-readable acceptance records**.
@@ -48,7 +49,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 - Generator distribution and answer-acceptance rule were audited against the original client on 2026-10-17 ([Parity audit](docs/PARITY_AUDIT.md)). The timer cutoff and PRNG still differ, as documented there. **Individual score equivalence is not certified.**
 - Complete difficulty/method taxonomy (skill cells are operand-space only in v1), calibrated learner model, in-run difficulty adaptation and cross-operation pattern drills remain to be built; wrong attempts are now persisted per question (engine 3) and spaced-review outcomes are fast-and-clean, but the drills' transfer to benchmark scores is still unmeasured — automaticity drills and the gauntlet are protocol + probe surfaces ([Gauntlet](docs/GAUNTLET.md)); the daily plan's plateau branches and minute allocation are transparent, deterministic heuristics, not measured policies; their evaluation is part of the pending F20/F21 work.
 - AI tutor, multiplayer, verified leaderboards, account sync, full quant interview curriculum and market-making simulation are planned, **not usable yet**.
-- The present arithmetic Academy teaches techniques but does not yet provide interactive step-through exercises.
+- The arithmetic Academy rehearsed guided-step practice into all addition, subtraction and multiplication cards; division cards remain worked examples only, and the double-and-halve card has no pattern-drill hand-off (its fixed-25 pair never occurs in the benchmark operand space — stated in the UI, not hidden).
 
 For precise status of each feature, use [Feature Matrix](docs/FEATURE_MATRIX.md).
 
