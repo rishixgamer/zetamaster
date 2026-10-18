@@ -14,7 +14,7 @@ The 55 entries below correspond to every numbered product feature in the brainst
 | F08 | Operation-specific analysis | implemented | `analytics/web` | Counts and median times for all four operations |
 | F09 | Arithmetic heatmaps | implemented | `analytics/web` | Accessible interactive heatmap grid per operation with keyboard navigation, sample counts, median latencies, CI, benchmark-only scope, deep links and cell drills |
 | F10 | Difficulty classification | partial | `core` | Multiple classification tags; validate taxonomy and extend harder patterns |
-| F11 | Speed accuracy analysis | partial | `analytics/web` | Entry-quality typology (clean/revision/slip/calculation) on results; add latency-stratified analytics view across sessions |
+| F11 | Speed accuracy analysis | implemented | `analytics/web` | Entry-quality typology (clean/revision/slip/calculation) on results |
 | F12 | Performance timeline | implemented | `analytics/web` | Benchmark-only trajectory, recent median, personal best |
 | F13 | Fatigue analysis | implemented | `analytics` | Operation-adjusted relative time by quarter of the run with CIs, plus paired second-half vs first-half shift across standard runs (docs/FATIGUE.md) |
 | F14 | Question replay | implemented | `web/core` | Replay slowest five attempts with original operands outside benchmark |

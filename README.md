@@ -29,6 +29,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 - Interactive, keyboard-accessible weakness heatmaps per operation, with sample counts, median CIs, a benchmark-only scope, deep links, and one-click 60 s cell drills that are always saved as practice.
 - Benchmark consistency dashboard: progress toward 8-of-10 at 70+, the 8th-best gap, rolling median and 10th–90th band chart, robust trend, and median CIs ([Consistency metrics](docs/CONSISTENCY.md)).
 - Pace and slow-tail analysis: operation-adjusted solve time by part of the run, second-half slowdown with CIs, slow-question share, time lost per run, and costliest stalls ([Pace metrics](docs/FATIGUE.md)).
+- Entry-quality panel across standard benchmark runs: per-type rates, operation-adjusted time cost (relative to clean entry and seconds lost per run), a first-key vs typing proxy split, per-operation breakdown with sample gating, and a robust trend of the calculation share ([Entry quality](docs/ENTRY_QUALITY.md)).
 - Local saved session history; separate standard and practice runs; rolling benchmark median, personal best and consistent-70 goal check.
 - Initial adaptive operation weighting, basic diagnostics, personalized 15-minute daily plan, and 12 deterministic arithmetic lesson cards.
 - IndexedDB-first session storage with localStorage fallback, downloadable JSON/CSV, JSON import, and opt-in local history deletion.

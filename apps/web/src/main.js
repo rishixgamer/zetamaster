@@ -7,6 +7,7 @@ import { diagnose } from '../../../packages/analytics/src/diagnostics.js';
 import { errorTypology } from '../../../packages/analytics/src/errors.js';
 import { consistencySummary } from '../../../packages/analytics/src/consistency.js';
 import { paceProfile, tailProfile } from '../../../packages/analytics/src/fatigue.js';
+import { entryQuality, MIN_TYPE_SAMPLES } from '../../../packages/analytics/src/entry-quality.js';
 import { buildHeatmap, slowestCells, MIN_CELL_SAMPLES } from '../../../packages/analytics/src/heatmap.js';
 import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, cellDrill } from '../../../packages/training/src/drills.js';
 import { scoreChartSvg, chartLayout, nearestIndex, CHART } from './score-chart.js';
@@ -150,6 +151,7 @@ function renderAnalytics(){
   $('#analytics-root').innerHTML=`
     <section class="panel" id="consistency-root" aria-labelledby="consistency-title"></section>
     <section class="panel" id="pace-root" aria-labelledby="pace-title"></section>
+    <section class="panel" id="entry-root" aria-labelledby="entry-title"></section>
     <section class="panel" id="heatmap-root" aria-labelledby="heatmap-title"></section>
     <div class="panel"><h2 class="section-title">Time by operation</h2><div class="breakdown">${ops.map(o=>`<div class="breakdown-row"><span>${opNames[o.op]}</span><div class="bar"><div style="width:${Math.max(0,(o.medianMs??0)/maxTime*100)}%"></div></div><span>${fmt(o.medianMs)} <span class="muted">(${o.count}${o.ci?` · CI ${fmt(o.ci.low)}–${fmt(o.ci.high)}`:''})</span></span></div>`).join('')}</div><p class="secondary">Median per correctly solved problem across all sessions, with sample count and a 95% CI of the median once there are 6 or more. Lower is faster. Practice sessions included.</p></div>
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Current bottlenecks</h2>${worst.length?worst.map(w=>`<p class="secondary"><strong>${opNames[w.key]}</strong> · ${fmt(w.rawMedianMs)} median · ${w.count} observations</p>`).join(''):'<p class="secondary">More solved questions needed before identifying reliable weaknesses.</p>'}<p class="small muted">Heuristic, sample-size-smoothed estimates; not a validated cognitive assessment.</p></div>
@@ -158,6 +160,7 @@ function renderAnalytics(){
     <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" accept="application/json" hidden></div><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
   renderConsistency();
   renderPace();
+  renderEntry();
   renderHeatmap();
   $('#replay-slow').addEventListener('click',()=>{
     const slow=[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5);
@@ -255,6 +258,45 @@ function renderPace(){
     <p class="small muted">"Slow" means over the larger of 2× your typical time and a robust outlier cutoff (median + 3 MADs on the log scale). Time lost is the median per run of the time beyond typical spent on slow questions. Definitions: docs/FATIGUE.md.</p>`;
 }
 const OP_GLYPH={add:'+',sub:'–',mul:'×',div:'÷'};
+const ENTRY_SHORT={clean:'Clean',revision:'Revised',slip:'Slip',calculation:'Calculation'};
+function renderEntry(){
+  const root=$('#entry-root'); if(!root)return;
+  const q=entryQuality(sessions);
+  const tile=(label,value,note)=>`<div class="metric"><span>${label}</span><strong>${value}</strong><small class="tile-note">${note}</small></div>`;
+  const head=`<div class="section-header"><div><div class="eyebrow">ENTRY QUALITY · STANDARD BENCHMARKS ONLY</div><h2 class="section-title" id="entry-title">Entry quality across runs</h2></div><span class="tag">${q.runs} RUN${q.runs===1?'':'S'}</span></div>`;
+  if(!q.runs){root.innerHTML=`${head}<p class="secondary">Complete standard 120-second benchmarks to unlock this panel. Practice sessions and drills are excluded so entry types stay comparable across runs.</p>`;return;}
+  if(!q.observations){root.innerHTML=`${head}<p class="secondary">Your ${q.runs} standard run${q.runs===1?'':'s'} contain no solved questions to analyze.</p>`;return;}
+  const clean=q.costs[0], calc=q.costs.at(-1);
+  const flawed=q.observations-clean.count;
+  const ratioTxt=c=>c.ratio===null?'—':`×${c.ratio.toFixed(2)}${c.ci?` <span class="muted">· CI ×${c.ci.low.toFixed(2)}–${c.ci.high.toFixed(2)}</span>`:''}`;
+  const lostTxt=c=>c.count===0||c.lostMs===null?'—':fmt(c.lostMs)+(c.lostCI?` <span class="muted">· CI ${fmt(c.lostCI.low)}–${fmt(c.lostCI.high)}</span>`:'');
+  const splitTxt=c=>c.count===0?'—':c.splitN<MIN_TYPE_SAMPLES?'insufficient':fmt(c.firstMs);
+  const typeTable=`<table class="mini-table"><thead><tr><th scope="col">Type</th><th scope="col">Solves</th><th scope="col">vs clean entry</th><th scope="col">Lost / run</th><th scope="col">To 1st key (proxy)</th><th scope="col">Typing after</th></tr></thead><tbody>${q.costs.map(c=>`<tr><th scope="row">${ENTRY_SHORT[c.type]}</th><td>${c.count}</td><td>${ratioTxt(c)}</td><td>${lostTxt(c)}</td><td>${splitTxt(c)}</td><td>${c.count===0?'—':c.splitN<MIN_TYPE_SAMPLES?'insufficient':fmt(c.entryMs)}</td></tr>`).join('')}</tbody></table>`;
+  const opCell=c=>c.n===0?'—':c.n<MIN_TYPE_SAMPLES?`${c.n} <span class="muted">low n</span>`:`${c.n} <span class="muted">×${c.ratio.toFixed(2)}</span>`;
+  const opTable=`<table class="mini-table"><thead><tr><th scope="col">Operation</th><th scope="col">Clean</th><th scope="col">Revised</th><th scope="col">Slip</th><th scope="col">Calculation</th></tr></thead><tbody>${q.byOp.map(o=>`<tr><th scope="row">${opNames[o.op]}</th>${o.types.map(c=>`<td>${opCell(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const trend=q.calcTrend;
+  const notes=`<p class="small muted">vs clean entry = solve time ÷ that operation's clean-entry median, so a slow operation doesn't make its errors look worse. Lost/run = median across runs of Σ(time − clean-entry median) over that type's questions. First-key times are a proxy for thinking time. Rate medians and CIs need ≥6 observations; operation cells under ${MIN_TYPE_SAMPLES} solves show "low n".${q.baselineMixed?' Some operations lack clean-entry samples, so their comparisons fall back to the overall operation median.':''}${q.engine1Events?` ${q.engine1Events} question(s) from old engine-1 records: every correction in them is counted as a slip.`:''} Definitions and caveats: docs/ENTRY_QUALITY.md.</p>`;
+  root.innerHTML=`${head}
+    <div class="stat-grid consistency-tiles">
+      ${tile('NOT CLEAN',(100*flawed/q.observations).toFixed(1)+'%',esc(`${flawed} of ${q.observations} solves had an edit, slip or wrong answer first · ${q.runs} standard runs`))}
+      ${tile('TIME LOST / RUN',fmt(q.lostTotal),esc(q.lostTotalCI?`95% CI ${fmt(q.lostTotalCI.low)}–${fmt(q.lostTotalCI.high)} · beyond clean entry, per operation`:`beyond clean entry, per operation · CI needs ≥6 runs`))}
+      ${tile('CALCULATION TREND',trend?`${signed(trend.slope*100)}<small> pp/run</small>`:'—',esc(trend?`95% CI ${signed(trend.low*100)} to ${signed(trend.high*100)} · share of solves, last ${trend.n} runs`:`Calculation errors per run · needs ≥6 standard runs (has ${q.runs})`))}
+      ${tile('ROUGH QUESTION COST',q.questionsPerRun===null?'—':'≈ '+q.questionsPerRun.toFixed(1),esc('same time as questions at your median pace · rough upper bound, not a promised score gain'))}
+    </div>
+    ${q.runs<6?`<p class="secondary">Only ${q.runs} standard run${q.runs===1?'':'s'}: counts and totals are exact, but medians and shares stabilize around 6 or more runs, and the trend needs 6.</p>`:''}
+    <h3 class="subhead">Relative solve time by entry type</h3>
+    <div class="forest" role="table" aria-label="Median solve time relative to clean entry for the same operation, by entry type">
+      <div class="forest-row forest-axis" role="row" aria-hidden="true"><span></span><div class="forest-track">${[0.75,1,1.25,1.5].map(v=>`<span class="forest-tick" style="left:${forestPos(v)}%">×${v}</span>`).join('')}</div><span></span></div>
+      ${q.costs.filter(c=>c.count).map(c=>`<div class="forest-row${c.type==='calculation'?' entry-calc':''}" role="row"><span role="rowheader">${ENTRY_SHORT[c.type]}</span><div class="forest-track" role="cell" aria-label="${esc(`${c.count} ${ENTRY_SHORT[c.type].toLowerCase()} solves, median ${c.ratio===null?'no data':`×${c.ratio.toFixed(2)}`}${c.ci?`, 95% CI ×${c.ci.low.toFixed(2)} to ×${c.ci.high.toFixed(2)}`:''} of the clean-entry time for the same operation, ${fmt(c.lostMs)} lost per run`)}"><i class="forest-ref" style="left:${forestPos(1)}%"></i>${c.ci?`<i class="forest-ci" style="left:${forestPos(c.ci.low)}%;width:${(forestPos(c.ci.high)-forestPos(c.ci.low)).toFixed(2)}%"></i>`:''}${c.ratio===null?'':`<i class="forest-dot" style="left:${forestPos(c.ratio)}%"></i>`}</div><span role="cell" class="forest-val">${c.ratio===null?'—':`×${c.ratio.toFixed(2)}`} <span class="muted">· ${c.count} solves · ${fmt(c.lostMs)} lost/run</span></span></div>`).join('')}
+    </div>
+    <p class="small muted">×1.00 is your clean-entry time for the same operation; the calculation row (orange) is the only type that types a whole wrong answer first. Relative time and lost time can disagree in order: an error on a fast operation can cost little time yet sit far above clean entry.</p>
+    <div class="analysis-grid entry-grid">
+      <div><h3 class="subhead">Cost and entry split by type</h3><div class="chart-scroll">${typeTable}</div>
+      <div><h3 class="subhead">By operation</h3><div class="chart-scroll">${opTable}</div><p class="small muted">Each cell is solved count with the median relative to that operation's clean-entry time; "low n" marks short samples.</p></div>
+    </div>
+    <details class="table-view"><summary>Show per-run calculation share</summary><table><thead><tr><th scope="col">Run</th><th scope="col">Solved</th><th scope="col">Calculation share</th><th scope="col">Time lost</th></tr></thead><tbody>${[...q.perRun].reverse().map(r=>`<tr><td>${r.run}</td><td>${r.solved}</td><td>${(100*r.calculation/Math.max(1,r.solved)).toFixed(1)}%</td><td>${fmt(r.lostMs)}</td></tr>`).join('')}</tbody></table></details>
+    ${notes}`;
+}
 function cellColor(c){
   if(c.count<MIN_CELL_SAMPLES||c.ratio===null)return 'transparent';
   const strength=Math.min(1,Math.abs(Math.log2(c.ratio))/1.2);

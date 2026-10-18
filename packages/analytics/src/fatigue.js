@@ -16,15 +16,19 @@ export function shownAt(e) {
   return null;
 }
 
-/** Solved events from standard runs with an operation-relative time. Ops with too few samples are skipped. */
-export function relativeEvents(sessions) {
+/**
+ * Solved events from standard runs with an operation-relative time; ops with too few samples are
+ * skipped. Default scope: verified standard runs only; scope:'all' adds practice for exploration.
+ */
+export function relativeEvents(sessions, { scope = 'benchmark' } = {}) {
   // Chronological, so `run` numbers match the consistency chart.
-  const runs = sessions.filter(s => s.benchmark === true).sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+  const include = scope === 'all' ? () => true : s => s.benchmark === true;
+  const runs = sessions.filter(include).sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
   const all = runs.flatMap((s, run) => (s.events ?? []).filter(e => e.correct && Number.isFinite(e.responseMs) && e.responseMs > 0 && shownAt(e) !== null).map(e => ({ e, run, durationMs: (s.rules?.durationSeconds ?? 120) * 1000 })));
   const opMedian = Object.fromEntries(OPS.map(op => { const xs = all.filter(x => x.e.op === op).map(x => x.e.responseMs); return [op, xs.length >= MIN_OP_SAMPLES ? median(xs) : null]; }));
   const events = all.filter(x => opMedian[x.e.op] !== null).map(({ e, run, durationMs }) => ({
     run, op: e.op, label: `${e.left} ${e.symbol} ${e.right}`, responseMs: e.responseMs, shownAtMs: shownAt(e), durationMs,
-    opMedianMs: opMedian[e.op], ratio: e.responseMs / opMedian[e.op],
+    opMedianMs: opMedian[e.op], ratio: e.responseMs / opMedian[e.op], e,
   }));
   return { events, opMedian, runs: runs.length };
 }

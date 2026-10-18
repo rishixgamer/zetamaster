@@ -132,10 +132,11 @@
       "id": "F11",
       "area": "Analytics",
       "title": "Speed accuracy analysis",
-      "status": "partial",
+      "status": "implemented",
       "owner": "analytics/web",
       "acceptance": [
-        "Entry-quality typology (clean/revision/slip/calculation) on results; add latency-stratified analytics view across sessions"
+        "Entry-quality typology (clean/revision/slip/calculation) on results",
+        "Latency-stratified analytics view across standard benchmark runs: per-type rates with counts, operation-adjusted time cost (ratio vs clean entry and seconds lost per run) with median CIs, first-key vs typing split (labeled proxy), per-operation breakdown gated at 3 solves, and Theil-Sen trend of the calculation share (needs 6 runs); practice/drills excluded by default and engine-1 fallback disclosed"
       ],
       "dependencies": [],
       "benchmarkSafe": true
