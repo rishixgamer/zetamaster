@@ -6,10 +6,13 @@ import { SKILL_MIN_SAMPLES, skillCellFromId } from './skills.js';
  * docs/SKILLS.md documents this contract in full; the essentials:
  *
  * A *completed* pattern-drill run on one skill cell records exactly one review record when it has
- * enough evidence, and nothing otherwise. "Fast and correct" is deliberately narrow: the engine does
- * not persist wrong attempts (F07 follow-up), so correctness inside a drill cannot be measured from
- * stored events — only the solves are. The review therefore measures recall speed against the
- * automatization line, and the outcome is honest about that limitation in the UI copy.
+ * enough evidence, and nothing otherwise. "Fast and correct" measures both halves: the run's usable
+ * solves must pass the automatization speed rule AND at least half of them must carry no recorded
+ * wrong attempt (a complete wrong value typed, or Enter pressed on a wrong field). Wrong attempts
+ * are persisted per question (engine zm-engine-3 `wrongAttempts`); records from before engine 3 have
+ * no such history but do carry the counters, so engine-2 events are judged from those counters and
+ * still-older engine-1 events count as accuracy-unknown, which leans clean — absence of the field is
+ * never treated as evidence of errors.
  *
  * `SKILL_REVIEW_FAST_MS` is F20's `AUTOMATICITY_MS` (imported, one constant, no drift). The minimum
  * run length mirrors `SKILL_MIN_SAMPLES` (the heatmap/rollup gate): both are the smallest sample a
@@ -25,6 +28,20 @@ export function nearestRankMedian(values) {
   const xs = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
   if (!xs.length) return null;
   return xs[Math.ceil(xs.length / 2) - 1];
+}
+
+/**
+ * Did this solved event carry a recorded wrong attempt — a complete wrong value typed or Enter
+ * pressed on a wrong field? Reads the bounded engine-3 history AND the correction counters, so
+ * pre-engine-3 events (no `wrongAttempts` list) are still judged from `wrongSubmissions` /
+ * `fullWrongAnswers`. Self-corrected slips and revisions (`wrongPrefixes`/`corrections` without a
+ * complete wrong value or submission) do NOT count — they are not wrong answers, matching the
+ * error typology where only the 'calculation' type types a wrong answer first.
+ */
+export function eventHadWrongAttempt(e) {
+  if (!e || typeof e !== 'object') return false;
+  if (Array.isArray(e.wrongAttempts) && e.wrongAttempts.length > 0) return true;
+  return (e.wrongSubmissions ?? 0) > 0 || (e.fullWrongAnswers ?? 0) > 0;
 }
 
 /**
@@ -52,23 +69,35 @@ export function drillReviewEligible(result) {
  *
  * `events` are the run's solved events **already filtered to the drilled cell** by the caller
  * (`skillOf(event)?.id === drillCellId`); filtering stays with the caller so this function has
- * explicit inputs. Non-finite or negative `responseMs` entries are ignored.
+ * explicit inputs. Non-finite or negative `responseMs` entries are ignored — both rules below
+ * (speed and accuracy) are share statements over the same usable solves.
  *
  * Returns:
  * - `null` — record nothing: the run was ended early (interrupted review) or has fewer than
  *   `minSolves` in-cell solves (not enough evidence to say anything about motion);
- * - otherwise `{ wasFastAndCorrect, solveCount, medianMs, fastMs }`, where success means at least
- *   half of the in-cell solves finished at or under `fastMs` (equivalently: nearest-rank median
- *   ≤ fastMs, pinned edge by edge in tests/reviews.test.js).
+ * - otherwise `{ wasFastAndCorrect, solveCount, medianMs, fastMs, cleanCount, cleanShare,
+ *   wrongAttemptSolves }` where success requires BOTH:
+ *   1. the nearest-rank median of the usable solves ≤ `fastMs` (speed — pinned edge by edge), AND
+ *   2. at least half of the usable solves carry no recorded wrong attempt (`eventHadWrongAttempt`)
+ *      — `cleanShare ≥ 0.5`; exactly half passes, mirroring the speed rule's shape.
  */
 export function drillReviewOutcome(events, { endedEarly = false, fastMs = SKILL_REVIEW_FAST_MS, minSolves = SKILL_REVIEW_MIN_SOLVES } = {}) {
   if (endedEarly) return null;
   const solves = (Array.isArray(events) ? events : [])
-    .map(e => (e && typeof e === 'object' ? e.responseMs : null))
-    .filter(ms => Number.isFinite(ms) && ms >= 0);
+    .filter(e => e && typeof e === 'object' && Number.isFinite(e.responseMs) && e.responseMs >= 0);
   if (solves.length < minSolves) return null;
-  const medianMs = nearestRankMedian(solves);
-  return { wasFastAndCorrect: medianMs <= fastMs, solveCount: solves.length, medianMs, fastMs };
+  const medianMs = nearestRankMedian(solves.map(e => e.responseMs));
+  const cleanCount = solves.filter(e => !eventHadWrongAttempt(e)).length;
+  const cleanShare = cleanCount / solves.length;
+  return {
+    wasFastAndCorrect: medianMs <= fastMs && cleanShare >= 0.5,
+    solveCount: solves.length,
+    medianMs,
+    fastMs,
+    cleanCount,
+    cleanShare,
+    wrongAttemptSolves: solves.length - cleanCount,
+  };
 }
 
 const OP_ORDER = ['add', 'sub', 'mul', 'div'];

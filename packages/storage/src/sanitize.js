@@ -1,5 +1,6 @@
 import { benchmarkEquivalent, BENCHMARK_RULES, OPERATIONS } from '../../core/src/rulesets.js';
 import { makeQuestion } from '../../core/src/generator.js';
+import { MAX_WRONG_ATTEMPTS } from '../../core/src/session.js';
 import { SKILL_TAXONOMY_VERSION, skillCellFromId } from '../../training/src/skills.js';
 
 const NUMERIC_FIELDS = ['responseMs', 'firstInputMs', 'entryMs', 'corrections', 'wrongSubmissions', 'wrongPrefixes', 'fullWrongAnswers', 'inputChanges', 'completedAtMs', 'shownAtMs'];
@@ -15,6 +16,24 @@ function sanitizeEvent(e) {
   const out = { ...q, correct: e.correct === true, pasted: e.pasted === true };
   for (const k of NUMERIC_FIELDS) if (e[k] === null || Number.isFinite(e[k])) out[k] = e[k] ?? null;
   if (!Number.isFinite(out.responseMs) || out.responseMs < 0) return null;
+  // Wrong-attempt history (engine 3): presence of the list is the accuracy-evidence signal, so the
+  // field is kept only when the import actually carried an array — absent means "accuracy unknown"
+  // (older records), never "no wrong attempts". Entries are whitelist-rebuilt, capped, and unusable
+  // members (non-objects, non-finite/negative times, empty values) are dropped per entry, so one
+  // forged member cannot invalidate the whole event.
+  if (Array.isArray(e.wrongAttempts)) {
+    const attempts = [];
+    for (const w of e.wrongAttempts) {
+      if (attempts.length >= MAX_WRONG_ATTEMPTS) break;
+      if (!w || typeof w !== 'object') continue;
+      const atMs = Number(w.atMs);
+      if (!Number.isFinite(atMs) || atMs < 0) continue;
+      const value = typeof w.value === 'string' ? w.value.trim().slice(0, 16) : '';
+      if (!value) continue;
+      attempts.push({ value, atMs: Math.round(atMs) });
+    }
+    out.wrongAttempts = attempts;
+  }
   return out;
 }
 

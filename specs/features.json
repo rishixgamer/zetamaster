@@ -87,7 +87,8 @@
    "status": "implemented",
    "owner": "core",
    "acceptance": [
-    "Record operands timing changes and corrections; explicitly label first-key proxy; wrong-prefix, full-wrong-answer, paste and visibility telemetry defined in docs/TELEMETRY.md"
+    "Record operands timing changes and corrections; explicitly label first-key proxy; wrong-prefix, full-wrong-answer, paste and visibility telemetry defined in docs/TELEMETRY.md",
+    "Wrong answers persist as values: engine zm-engine-3 stores a bounded per-question wrongAttempts history (Enter submissions and complete wrong values typed, max 4 entries/values capped at 16 chars, counter-deduped repeats) while the scalar counts stay exact; scored questions and benchmark eligibility are untouched"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -232,7 +233,7 @@
    "status": "implemented",
    "owner": "training",
    "acceptance": [
-    "Pure scheduling primitive is deterministic with explicit now; per-skill review records persist in IndexedDB schema v2 (additive store) with capped localStorage fallback, sanitized/versioned imports and v2 export bundle; every completed pattern drill records one review (interrupted or under-3-solve runs record nothing) whose success rule is at least half the run's in-cell solves at or under the shared AUTOMATICITY_MS 2000 line (nearest-rank median, pinned edge by edge); a due-review queue on the Train tab prompts at-or-overdue records and launches their cells; review outcomes measure speed only (the engine does not persist wrong attempts) and the 1-60 day ladder is a heuristic, not a validated model"
+    "Pure scheduling primitive is deterministic with explicit now; per-skill review records persist in IndexedDB schema v2 (additive store) with capped localStorage fallback, sanitized/versioned imports and v3 export bundle; every completed pattern drill records one review (interrupted or under-3-solve runs record nothing) whose success rule is the nearest-rank speed rule AND at least half the run's in-cell solves carried no recorded wrong attempt (engine-3 wrongAttempts, engine-2 judged from counters, engine-1-era absence counts as accuracy-unknown-clean); a due-review queue on the Train tab prompts at-or-overdue records and launches their cells; the 1-60 day ladder is a heuristic, not a validated model"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -472,7 +473,7 @@
    "status": "implemented",
    "owner": "core/analytics",
    "acceptance": [
-    "First-input proxy, corrections, wrong prefixes and bounded per-question input traces (captureTrace flag); no UI toggle yet"
+    "First-input proxy, corrections, wrong prefixes and bounded per-question input traces (captureTrace flag); wrong submissions and complete typed wrong values persist as a bounded wrongAttempts history (engine zm-engine-3) with an engine test for the wrong-submission state machine (double submission, backspace, restore); no UI toggle yet"
    ],
    "dependencies": [],
    "benchmarkSafe": true

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ArithmeticSession, matchesAnswer, MAX_TRACE, ENGINE_VERSION } from '../packages/core/src/session.js';
+import { ArithmeticSession, matchesAnswer, MAX_TRACE, MAX_WRONG_ATTEMPTS, ENGINE_VERSION } from '../packages/core/src/session.js';
 import { BENCHMARK_RULES, customRules } from '../packages/core/src/rulesets.js';
 import { makeQuestion } from '../packages/core/src/generator.js';
 import { classifyError, errorTypology } from '../packages/analytics/src/errors.js';
@@ -66,6 +66,29 @@ test('Enter only counts on a non-empty non-answer and never scores', () => {
   assert.equal(session.score, 0);
   type('6'); type(''); type('7'); type('72');
   assert.equal(session.events[0].wrongSubmissions, 1);
+});
+
+test('wrong attempts persist with values: double submission, typed wrong then Enter, backspace and restore', () => {
+  const { session, move, type } = harness(); session.start(); move(500);
+  type('6');                                     // 1500: a possible prefix alone is not a wrong attempt
+  assert.deepEqual(session.wrongAttempts, []);
+  session.markWrongSubmission();                 // Enter #1 on "6"
+  session.markWrongSubmission();                 // double submission: two errors, one history entry
+  assert.equal(session.wrongSubmissions, 2);
+  move(300); type('62');                         // 1800: complete wrong value typed (fullWrongAnswers path)
+  session.markWrongSubmission();                 // Enter on the same "62" — consolidated into that entry
+  assert.equal(session.wrongSubmissions, 3);
+  assert.equal(session.fullWrongAnswers, 1);
+  move(200); type('6'); type(''); type('7'); type('72');  // backspace, restore, solve at 2000
+  const e = session.events[0];
+  assert.equal(e.wrongSubmissions, 3);
+  assert.equal(e.fullWrongAnswers, 1);
+  assert.deepEqual(e.wrongAttempts, [{ value: '6', atMs: 500 }, { value: '62', atMs: 800 }]);
+  assert.equal(e.responseMs, 1000);
+  assert.equal(classifyError(e), 'calculation', 'the wrong-attempt history matches the typology counts');
+  session.markWrongSubmission();                 // Enter after finish is inert; the next question is active again
+  assert.equal(session.events[0].wrongSubmissions, 3, 'solved events are immutable once recorded');
+  assert.ok(session.current !== null);
 });
 
 test('duplicate input events and stale values cannot double-score', () => {
@@ -138,6 +161,35 @@ test('trace is bounded per question', () => {
   assert.equal(session.events[0].trace.length, MAX_TRACE);
 });
 
+test('wrong-attempt history is capped per question while the error counters stay exact', () => {
+  const { session, move, type } = harness(); session.start(); move(100);
+  for (const value of ['63', '64', '65', '66', '67']) {
+    move(100);                                  // fresh complete wrong value...
+    assert.deepEqual(type(value), [false]);     // ...typed in full (fullWrongAnswers path)
+    session.markWrongSubmission();              // ...and Enter-submitted (wrongSubmissions path)
+    move(100); type('');                        // clear the field for the next wrong attempt
+  }
+  type('72');
+  const e = session.events[0];
+  assert.equal(e.wrongAttempts.length, MAX_WRONG_ATTEMPTS, 'history is capped at four entries');
+  assert.deepEqual(e.wrongAttempts.map(a => a.value), ['63', '64', '65', '66'], 'later attempts beyond the cap are dropped from the history');
+  assert.equal(e.fullWrongAnswers, 5, 'the scalar count stays exact beyond the cap');
+  assert.equal(e.wrongSubmissions, 5, 'the scalar count stays exact beyond the cap');
+});
+
+test('the final unanswered question carries its wrong attempts when the run expires', () => {
+  const { session, move, type } = harness(); session.start(); move(1000);
+  type('6'); type('62'); session.markWrongSubmission();
+  move(119000);                                 // t = 121 000 = the deadline
+  session.tick();                               // expiry finishes the session via tick()
+  const result = session.finish();
+  assert.equal(result.finalUnanswered.wrongSubmissions, 1);
+  assert.equal(result.finalUnanswered.fullWrongAnswers, 1);
+  assert.deepEqual(result.finalUnanswered.wrongAttempts, [{ value: '62', atMs: 1000 }]);
+  assert.equal(result.score, 0, 'wrong attempts never score, in the original and here');
+});
+
+
 test('practice modes never become benchmarks, even with default rules', () => {
   for (const mode of ['custom', 'adaptive', 'replay', 'drill', 'sprint']) {
     const { session, move } = harness({ mode }); session.start(); move(120000);
@@ -183,3 +235,40 @@ test('import drops malformed events', () => {
   const s = sanitizeImportedSession(raw);
   assert.equal(s.events.length, 1);
 });
+
+test('import whitelists wrong attempts: trims, caps, and drops unusable entries per entry', () => {
+  const raw = validBenchmarkRecord();
+  raw.events[0].wrongAttempts = [
+    { value: ' 62 ', atMs: 300 },                // trimmed
+    { value: 'x'.repeat(20), atMs: 400 },        // truncated to 16 chars
+    { value: '', atMs: 500 },                    // empty value dropped
+    { value: '63', atMs: 700 },                  // usable
+    { value: '67', atMs: 'late' },               // non-finite time dropped
+    { value: '68', atMs: -5 },                   // negative time dropped
+    'boom',                                      // non-object dropped
+    { value: '64', atMs: 800 },                  // usable — fills the four-entry cap
+    { value: '65', atMs: 900 },                  // never reached: the cap was already full
+  ];
+  const s = sanitizeImportedSession(raw);
+  assert.deepEqual(s.events[0].wrongAttempts, [
+    { value: '62', atMs: 300 },
+    { value: 'xxxxxxxxxxxxxxxx', atMs: 400 },
+    { value: '63', atMs: 700 },
+    { value: '64', atMs: 800 },
+  ]);
+  assert.equal(s.benchmark, true, 'wrong-attempt metadata never changes benchmark recomputation');
+});
+
+test('import caps an oversized wrong-attempt list and keeps absent fields absent', () => {
+  const raw = validBenchmarkRecord();
+  raw.events[0].wrongAttempts = Array.from({ length: 9 }, (_, i) => ({ value: `7${i}`, atMs: i * 100 }));
+  const s = sanitizeImportedSession(raw);
+  assert.equal(s.events[0].wrongAttempts.length, MAX_WRONG_ATTEMPTS, 'records stay bounded through imports');
+  const legacy = validBenchmarkRecord();
+  delete legacy.events[0].wrongAttempts;        // simulate a pre-engine-3 record: no history field at all
+  const without = sanitizeImportedSession(legacy);
+  assert.equal('wrongAttempts' in without.events[0], false, 'absent history stays absent: pre-engine-3 records keep their accuracy-unknown status');
+  assert.equal(without.benchmark, true);
+  assert.equal(sanitizeImportedSession({ ...validBenchmarkRecord(), events: [{ ...validBenchmarkRecord().events[0], wrongAttempts: 'garbage', responseMs: 100 }] })?.events?.[0]?.wrongAttempts, undefined, 'non-array garbage is dropped, not normalized');
+});
+

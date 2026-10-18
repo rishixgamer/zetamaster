@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { drillReviewOutcome, reviewQueue, nearestRankMedian, SKILL_REVIEW_FAST_MS, SKILL_REVIEW_MIN_SOLVES } from '../packages/training/src/reviews.js';
+import { drillReviewOutcome, reviewQueue, nearestRankMedian, eventHadWrongAttempt, SKILL_REVIEW_FAST_MS, SKILL_REVIEW_MIN_SOLVES } from '../packages/training/src/reviews.js';
 import { skillCellFromId, skillCellFor, skillOf, SKILL_MIN_SAMPLES } from '../packages/training/src/skills.js';
 import { skillReviewRecord } from '../packages/training/src/scheduler.js';
 import { parseSkillId } from '../packages/storage/src/sanitize.js';
@@ -67,6 +67,47 @@ test('outcome is null for interrupted or too-thin runs, and ignores unusable tim
   assert.equal(drillReviewOutcome([ev(7, 45, 900), ev(7, 46, 950), ev(7, 47, 1100)], { endedEarly: true }), null, 'interrupted drills never schedule');
 });
 
+// Accuracy half (F07/F11/F39 follow-up): a solved question that shows a wrong answer first — a
+// complete wrong value typed or Enter pressed on a wrong field — is not automatic recall. The
+// clean share decides like the speed share does: at least half. Two helpers: `dirtyCarried`
+// models an engine-3 solve with the persisted history, `dirtyCounter` a pre-history engine-2
+// solve judged from its counters.
+const dirtyCarried = ms => ({ ...ev(7, 46, ms), wrongSubmissions: 1, wrongAttempts: [{ value: '62', atMs: 300 }] });
+const dirtyCounter = ms => ({ ...ev(7, 46, ms), wrongSubmissions: 2 });
+
+test('accuracy half-rule: at least half of the in-cell solves must avoid a wrong answer', () => {
+  const a = drillReviewOutcome([dirtyCarried(900), ev(7, 45, 1000), ev(7, 47, 1100)]);
+  assert.equal(a.wasFastAndCorrect, true, '2 of 3 solves clean passes with a fast median');
+  assert.deepEqual([a.solveCount, a.cleanCount, a.wrongAttemptSolves], [3, 2, 1]);
+  assert.ok(Math.abs(a.cleanShare - 2 / 3) < 1e-12);
+  const b = drillReviewOutcome([dirtyCarried(900), dirtyCarried(950), ev(7, 45, 1000), ev(7, 47, 1000)]);
+  assert.equal(b.wasFastAndCorrect, true, 'exactly half clean passes, mirroring the speed share shape');
+  assert.equal(b.cleanShare, 0.5);
+  const c = drillReviewOutcome([dirtyCarried(900), dirtyCarried(950), dirtyCarried(1000), ev(7, 45, 1000)]);
+  assert.equal(c.wasFastAndCorrect, false, 'majority dirty fails even when the medians are fast');
+  assert.equal(c.cleanCount, 1);
+  const slow = drillReviewOutcome([ev(7, 45, 1900), ev(7, 46, 2100), ev(7, 47, 3000)]);
+  assert.equal(slow.wasFastAndCorrect, false, 'a clean-but-slow run fails on speed only — the two rules need both');
+  assert.equal(slow.cleanCount, 3);
+});
+
+test('pre-engine-3 solves are judged from their counters; field absence is never guilt', () => {
+  const counter = drillReviewOutcome([dirtyCounter(1000), dirtyCounter(1000), ev(7, 45, 1000)]);
+  assert.equal(counter.wasFastAndCorrect, false, 'engine-2 events with no wrongAttempts list are still caught via wrongSubmissions');
+  assert.deepEqual([counter.cleanCount, counter.wrongAttemptSolves], [1, 2]);
+  const mild = drillReviewOutcome([dirtyCounter(1000), ev(7, 45, 1000), ev(7, 47, 1000)]);
+  assert.equal(mild.wasFastAndCorrect, true, 'one counter-recorded wrong attempt among three is still majority clean');
+  const full = { ...ev(7, 46, 1000), fullWrongAnswers: 1 };
+  assert.equal(drillReviewOutcome([full, full, ev(7, 45, 1000)]).wasFastAndCorrect, false, 'a complete wrong value typed without Enter counts too (majority dirty fails)');
+  const naive = drillReviewOutcome([{ ...ev(7, 45, 1000), wrongSubmissions: undefined }, ev(7, 46, 1000), ev(7, 47, 1000)]);
+  assert.equal(naive.wasFastAndCorrect, true, 'engine-1-era events without counters lean clean: accuracy unknown, never invented');
+  assert.equal(naive.cleanCount, 3);
+  assert.equal(eventHadWrongAttempt({ wrongAttempts: [] }), false, 'an empty history is exactly "no wrong attempts recorded"');
+  assert.equal(eventHadWrongAttempt({ wrongSubmissions: 0, fullWrongAnswers: 0, wrongAttempts: [] }), false);
+  assert.equal(eventHadWrongAttempt(null), false);
+});
+
+
 test('skill cells reconstruct from stored ids against the current taxonomy', () => {
   for (const [a, b] of [[7, 45], [2, 2], [12, 100], [3, 9]]) {
     const direct = skillCellFor('mul', a, b), fromId = skillCellFromId(direct.id);
@@ -108,6 +149,8 @@ test('a played pattern drill feeds the outcome and then the scheduling chain', (
   assert.equal(result.endedEarly, false, 'a full drill is never ended early');
   assert.ok(result.events.length >= 10, `drill generated ${result.events.length} solves`);
   assert.ok(result.events.every(e => skillOf(e)?.id === cell7x45.id), 'every drill problem lands in its cell');
+  assert.ok(result.events.every(e => Array.isArray(e.wrongAttempts)), 'engine-3 events carry a (here empty) wrong-attempt history');
+  assert.ok(result.events.every(e => eventHadWrongAttempt(e) === false), 'clean typing stays clean under both rules');
   const inCell = result.events.filter(e => skillOf(e)?.id === cell7x45.id);
   const outcome = drillReviewOutcome(inCell, { endedEarly: result.endedEarly });
   assert.equal(outcome.wasFastAndCorrect, true, '1.8 s solves are inside the automatization line');

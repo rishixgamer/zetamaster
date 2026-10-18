@@ -1,6 +1,8 @@
-# Telemetry definitions (engine `zm-engine-2`)
+# Telemetry definitions (engine `zm-engine-3`)
 
 All data stays on the device. Times come from a monotonic clock (`performance.now()`), relative to when a question was shown. Definitions live in `packages/core/src/session.js`; the error typology is in `packages/analytics/src/errors.js`.
+
+Engine 3 (2026-10-18) added the per-question wrong-attempt history below; answer acceptance, scoring and all earlier fields are unchanged from engine 2.
 
 ## Answer acceptance
 
@@ -16,14 +18,15 @@ The field text is fed to the engine on every `input` event. A question is solved
 | `corrections` | input events that shortened the field | |
 | `wrongPrefixes` | entries into a state that can no longer become the answer (e.g. `8` when the answer is `72`, or `7a`) | |
 | `fullWrongAnswers` | times a wrong value at least as long as the answer was typed | counted on growth only |
-| `wrongSubmissions` | Enter pressed while the field held a non-empty non-answer | no game effect |
+| `wrongSubmissions` | Enter pressed while the field held a non-empty non-answer | no game effect; engine 3 also stores *what* was wrong in `wrongAttempts` |
+| `wrongAttempts` | engine 3+: the wrong values behind the counters — one entry `{value, atMs}` per Enter submission and per complete wrong value typed, capped at 4 (`MAX_WRONG_ATTEMPTS`) and truncated to 16 characters | repeats of the last stored value consolidate ("63" typed then Enter = one entry, two counter errors); the scalar counts stay exact; pre-3 records have no field, which means *accuracy unknown*, never "no errors" |
 | `pasted` | an input event added more than one character | mobile autocomplete can trigger this too |
 | `trace` | up to 48 `[ms, fieldText]` snapshots | field text truncated to 16 characters |
 | `shownAtMs`, `completedAtMs` | offsets from session start | used for fatigue/position analysis |
 
 ## Error typology (one type per solved question)
 
-1. **calculation**: a complete wrong answer was typed or submitted before the right one.
+1. **calculation**: a complete wrong answer was typed or submitted before the right one. The value-level history behind this type is `wrongAttempts` in records from engine 3 on; diagnosis here itself still reads only the counters, so it behaves identically across engines.
 2. **slip**: a wrong digit appeared mid-entry and was fixed.
 3. **revision**: text was deleted with no wrong prefix ever visible.
 4. **clean**: typed straight through.
@@ -49,7 +52,7 @@ telemetry and benchmark eligibility are unaffected.
 
 ## Benchmark eligibility
 
-`benchmark` is true only if `mode === 'benchmark'`, the rules snapshot equals `BENCHMARK_RULES`, the full duration elapsed, and the run wasn't ended manually. Imported sessions get this recomputed from those same fields by `packages/storage/src/sanitize.js`, and the score must also equal the number of solved events.
+`benchmark` is true only if `mode === 'benchmark'`, the rules snapshot equals `BENCHMARK_RULES`, the full duration elapsed, and the run wasn't ended manually. Imported sessions get this recomputed from those same fields by `packages/storage/src/sanitize.js`, and the score must also equal the number of solved events. Imported wrong attempts are whitelist-rebuilt per entry (capped at `MAX_WRONG_ATTEMPTS`, trimmed/truncated values, non-finite or negative times dropped) so one forged member cannot invalidate a question; an absent list imports as absent — accuracy unknown, never normalized to "clean".
 
 ## Sample-size guidance
 

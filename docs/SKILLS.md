@@ -147,19 +147,31 @@ finished run and the UI shows the outcome in the drill result panel.
   `skillOf(event).id` equals the drilled cell id (the event filter is the caller's job, so the
   function has explicit inputs). Below that, no record — the results panel says so.
 - **Success rule ("wasFastAndCorrect"):** the run's usable solve times (`responseMs` finite and
-  ≥ 0; unusable entries are ignored, not counted) pass when **at least half finish at or under
-  `SKILL_REVIEW_FAST_MS = 2000 ms`** — equivalently, the *nearest-rank* median ≤ 2000 (the smallest
-  value with at least half the observations at or below it). The same 2000 ms automatization line is
-  F20 `masteryProxy`'s per-event threshold, exported from `packages/analytics/src/skill-model.js` as
-  `AUTOMATICITY_MS` and imported here, so the two features cannot drift. The nearest-rank choice is
-  pinned by tests: at exactly half-solves-inside, the run passes; an interpolated median would
-  sometimes disagree, and the reported `medianMs` is the same nearest-rank value.
+  ≥ 0; unusable entries are ignored, not counted) and their recorded wrong attempts both decide.
+  **Speed half:** at least half of the solves finish at or under `SKILL_REVIEW_FAST_MS = 2000 ms` —
+  equivalently, the *nearest-rank* median ≤ 2000 (the smallest value with at least half the
+  observations at or below it). The same 2000 ms automatization line is F20 `masteryProxy`'s
+  per-event threshold, exported from `packages/analytics/src/skill-model.js` as `AUTOMATICITY_MS`
+  and imported here, so the two features cannot drift. The nearest-rank choice is pinned by tests:
+  at exactly half-solves-inside, the run passes; an interpolated median would sometimes disagree,
+  and the reported `medianMs` is the same nearest-rank value.
+  **Accuracy half (engine 3):** at least half of the same solves carry **no recorded wrong attempt**
+  — `wrongAttempts` history (engine 3) or, without that field, the correction counters themselves;
+  a complete wrong value typed or Enter pressed on a wrong field is a wrong attempt, while
+  self-corrected slips and revisions are not. Exactly half passing mirrors the speed rule's shape.
+  Absence of the field (engine-1-era records) counts as accuracy-unknown and leans clean — absence
+  is never read as evidence of errors.
 - **Outcomes:** success (`wasFastAndCorrect = true`) grows the streak and multiplies the interval
-  (1 → 2 → 4 … 60 d, lapse at a streak cap); anything slower records a lapse (streak reset,
-  interval back to 1 day). Both outcomes are records; only absence of evidence records nothing.
+  (1 → 2 → 4 … 60 d, lapse at a streak cap); anything slower *or* wrong on more than half the solves
+  records a lapse (streak reset, interval back to 1 day). Both outcomes are records; only absence of
+  evidence records nothing.
 - **Sample-size caveat:** the review decision rests on one run's solves (≥ 3 observations); a run
-  can pass on a lucky tail or lapse on a busy morning. The record is averaged *across* runs only
-  through the streak counters, never through a flattened median-of-medians.
+  can pass on a lucky tail or lapse on a busy morning. The accuracy half is only as honest as the
+  recorded attempts: wrongAttempts entries are Enter-submissions and complete wrong values typed —
+  a run recorded before engine 3 (or a legacy import without those counters) degrades to
+  speed-only, and a review never claims more than what the event fields carry. The record is
+  averaged *across* runs only through the streak counters, never through a flattened
+  median-of-medians.
 
 ### Review queue (Train tab)
 
@@ -305,17 +317,18 @@ medians and the estimate, so the arithmetic is reproducible from the row alone.
 - Cross-operation pattern mixing does not exist: the generator draws from one rectangle per
   operation family, so v1 "mix" is interleaving one cell with its adjacent band only. A generator
   extension (and its own parity audit) would precede any multi-operation pattern drill.
-  exact-minutes weighting toward the selected branch, largest-remainder split; branches are
-  hypotheses from record evidence, not measured treatments (F21/F22 evaluate them).
 - The coverage meter describes *reach* (how much of the 420-cell taxonomy the history has touched),
   not ability or mastery; a high share is not an achievement metric and stable evidence ≠ skill.
 - Score-impact estimates are arithmetic on your own recorded medians: they say what closing a gap
   would be worth *if* freed seconds converted to correct answers, which is an assumption, not a
   measurement; the category step has no calibration and the policy comparison has no outcome
   tracking, so no ranking of training strategies is supportable yet (F20/F21 remain partial).
-- Review outcomes measure **speed only**. The engine does not persist wrong attempts (the F07
-  correction-semantics follow-up), so "fast *and* correct" reduces, in practice, to the speed rule
-  above; lapses are "recall was not automatic", not "answers were wrong".
+- Review outcomes measure speed **and** recorded wrong attempts — nothing more. "Correct" means no
+  complete wrong value typed and no wrong Enter submission *before* the solve (engine-3
+  `wrongAttempts`, falling back to the counters); a solved question is correct (the engine only
+  records solved questions), so an accuracy lapse = "fumbled into a wrong answer first", not
+  "answered wrong on the record". Engine-2 runs derive accuracy from counters, engine-1-era runs
+  lean clean on unknown accuracy, and neither half validates the ladder as a treatment.
 - The 1–60 day interval ladder is a fixed heuristic, not a validated forgetting model, and the queue
   is a prompt, not a measured intervention.
 - Rollup medians are observations, not calibrated ability estimates.

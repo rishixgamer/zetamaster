@@ -1,9 +1,15 @@
 import { benchmarkEquivalent } from './rulesets.js';
 
 /** Bump when answer acceptance or telemetry semantics change; stored on every result. */
-export const ENGINE_VERSION = 'zm-engine-2';
+export const ENGINE_VERSION = 'zm-engine-3';
 /** Per-question cap on stored input snapshots; keeps records small and bounded. */
 export const MAX_TRACE = 48;
+/**
+ * Per-question cap on the stored wrong-attempt history (value-level, engine 3). The scalar
+ * counters (`wrongSubmissions`, `fullWrongAnswers`) never cap and stay exact; only the history
+ * of *which* wrong values were produced is truncated so records stay small.
+ */
+export const MAX_WRONG_ATTEMPTS = 4;
 
 /** Original Zetamac rule (audited 2026-10-17): trimmed field text equals the answer's decimal string. */
 export function matchesAnswer(value, answer) { return String(value).trim() === String(answer); }
@@ -18,6 +24,9 @@ export function isAnswerPrefix(value, answer) { return String(answer).startsWith
  * - wrongPrefixes: transitions from a still-possible prefix into text that cannot become the answer.
  * - fullWrongAnswers: times the field held a wrong value at least as long as the answer.
  * - wrongSubmissions: Enter pressed on a non-matching field (no game effect, as in the original).
+ * - wrongAttempts: the bounded history of wrong values behind those counters — Enter submissions
+ *   and complete wrong values typed (engine 3+). Repeats of the last stored value consolidate, so
+ *   "63" typed then Enter is one history entry and still two errors in the counts.
  * - pasted: a single input event added more than one character.
  * - firstInputMs: time to first keystroke — a proxy, not exact thinking time.
  * - missedEvents: questions expired by an optional `questionBudgetMs` (F31, practice-only); records
@@ -51,6 +60,7 @@ export class ArithmeticSession {
     this.questionShownAt = null; this.firstInputAt = null; this.lastValue = '';
     this.inputChanges = 0; this.corrections = 0; this.wrongSubmissions = 0;
     this.wrongPrefixes = 0; this.fullWrongAnswers = 0; this.pasted = false; this.trace = [];
+    this.wrongAttempts = [];
     this.questionDeadline = null;
   }
   start() {
@@ -104,7 +114,10 @@ export class ArithmeticSession {
     if (value.length - prior.length > 1) { this.pasted = true; this.integrity.pasteEvents++; }
     const wrong = value.trim().length > 0 && !isAnswerPrefix(value, answer);
     if (wrong && (prior.trim().length === 0 || isAnswerPrefix(prior, answer))) this.wrongPrefixes++;
-    if (wrong && value.trim().length >= String(answer).length && value.length > prior.length) this.fullWrongAnswers++;
+    if (wrong && value.trim().length >= String(answer).length && value.length > prior.length) {
+      this.fullWrongAnswers++;
+      this.recordWrongAttempt(value, now);
+    }
     this.inputChanges++;
     this.lastValue = value;
     if (this.captureTrace && this.trace.length < MAX_TRACE) this.trace.push([Math.round(now - this.questionShownAt), value.slice(0, 16)]);
@@ -121,12 +134,32 @@ export class ArithmeticSession {
       entryMs: this.firstInputAt === null ? null : now - this.firstInputAt,
       corrections: this.corrections, wrongSubmissions: this.wrongSubmissions, wrongPrefixes: this.wrongPrefixes,
       fullWrongAnswers: this.fullWrongAnswers, pasted: this.pasted, inputChanges: this.inputChanges,
+      wrongAttempts: [...this.wrongAttempts],
       shownAtMs: this.questionShownAt - this.startedAt,
       ...(this.captureTrace ? { trace: this.trace } : {}),
     };
   }
+  /**
+   * Persist one wrong attempt toward the current question (engine 3): either Enter was pressed on
+   * a non-answer, or a complete wrong value was typed. Bounded by MAX_WRONG_ATTEMPTS with the
+   * scalar counters staying exact; a repeat of the last stored value consolidates into that entry
+   * ("63" typed then Enter, or double-pressed Enter) so the history holds distinct wrong beliefs.
+   * Values are trimmed (the game's own answer rule trims) and capped at 16 characters.
+   */
+  recordWrongAttempt(value, now) {
+    const text = String(value ?? '').trim().slice(0, 16);
+    if (!text) return;
+    const last = this.wrongAttempts[this.wrongAttempts.length - 1];
+    if (last && last.value === text) return;
+    if (this.wrongAttempts.length >= MAX_WRONG_ATTEMPTS) return;
+    this.wrongAttempts.push({ value: text, atMs: Math.round(now - this.questionShownAt) });
+  }
   /** Enter has no effect in the original game; it is recorded only when the field holds a non-answer. */
-  markWrongSubmission() { if (this.state === 'active' && this.lastValue.trim().length) this.wrongSubmissions++; }
+  markWrongSubmission() {
+    if (this.state !== 'active' || !this.lastValue.trim().length) return;
+    this.wrongSubmissions++;
+    this.recordWrongAttempt(this.lastValue, this.clock());
+  }
   /** Page visibility does not pause the clock (matches original). Hidden time is recorded for transparency. */
   recordVisibility(hidden) {
     if (this.state !== 'active') return;

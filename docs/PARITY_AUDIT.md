@@ -14,9 +14,9 @@
 | Division | `(a·b) ÷ a`, divisor is the 2–12 factor, answer `b` | same | ✅ parity |
 | Repeats | no duplicate avoidance | none | ✅ parity |
 | Problem glyphs | `+`, `–` (en dash), `×`, `÷` | same (changed `−` → `–` in this audit) | ✅ parity |
-| Answer acceptance | auto-advance when `field.trim() === String(answer)`; leading zeros do **not** match; non-digits stay in the field until deleted | engine `zm-engine-2`: same rule, field is not sanitized | ✅ parity (engine 2) |
+| Answer acceptance | auto-advance when `field.trim() === String(answer)`; leading zeros do **not** match; non-digits stay in the field until deleted | same rule, field is not sanitized (audited on engine `zm-engine-2`; unchanged in engine `zm-engine-3`) | ✅ parity |
 | Enter key | no handler | logged as telemetry only, no game effect | ✅ parity |
-| Wrong answers | no penalty, nothing recorded as "wrong" | same; slips recorded as telemetry only | ✅ parity |
+| Wrong answers | no penalty, nothing recorded as "wrong" | same — no penalty and no game effect; wrong submissions and wrong values are local, bounded telemetry (engine 3 keeps a per-question value history) | ✅ parity |
 | Timer | wall clock (`Date.now`), 1 s `setInterval`; game ends on the first tick where `120 − floor(elapsed/1000) ≤ 0`; answers between 120 000 ms and that tick still count | monotonic clock, strict 120 000 ms cutoff | ≈ see below |
 | Countdown display | integer "Seconds left" updated each second | `m:ss`, updated ~60 ms | cosmetic |
 | RNG | `Math.random` | seeded `mulberry32` | ≈ see below |

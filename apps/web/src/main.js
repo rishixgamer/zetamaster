@@ -134,7 +134,7 @@ function renderReviewQueue(){
     ${skillReviews.length?'':`<p class="secondary">No review records yet. A finished 60-second pattern drill (from a heatmap cell or the slowest-pattern hint in your plan) records one per cell; the next repetition is then spaced 1, 2, 4 … up to 60 days apart, and difficulty follows the streaks (a lapse narrows the drill, four consecutive fast runs stretch it).</p>`}
     ${rows?`<div class="review-list"><p class="secondary">These patterns are due for review: fast completion spaces them out; a slower run brings them back tomorrow.</p>${rows}</div>`:skillReviews.length?`<div class="empty">Nothing due right now. Reviews land 1, 2, 4 … 60 days after each drill.</div>`:''}
     ${upcoming}
-    <p class="small muted">A review records speed only: the engine doesn't persist wrong attempts yet, so "success" means at least ${SKILL_REVIEW_MIN_SOLVES} finished problems and at least half of them at or under the ${fmt(SKILL_REVIEW_FAST_MS)} line. Interrupted runs record nothing. The 1–60 day spacing ladder is a heuristic, not a validated model. Definitions: docs/SKILLS.md.</p>`;
+    <p class="small muted">A review records speed and accuracy: success needs at least ${SKILL_REVIEW_MIN_SOLVES} finished problems, at least half of them at or under the ${fmt(SKILL_REVIEW_FAST_MS)} line, and at least half of them without a wrong answer typed or Enter-submitted first. Solves without a recorded wrong-attempt history (engine-1 era sessions) count as accuracy-unknown and lean clean — absence of the field is never read as evidence of errors. Interrupted runs record nothing. The 1–60 day spacing ladder is a heuristic, not a validated model. Definitions: docs/SKILLS.md.</p>`;
   root.querySelectorAll('[data-review-launch]').forEach(btn=>btn.addEventListener('click',()=>{
     const cell=skillCellFromId(btn.dataset.reviewLaunch);
     const tier=Number(btn.dataset.reviewTier);
@@ -317,10 +317,12 @@ function drillReviewLine(review) {
   const due=new Date(review.record.nextReviewAt).toLocaleDateString();
   const nextTier=DRILL_TIERS[drillTierForRecord(review.record)];
   const pace=review.wasFastAndCorrect
-    ?`median ${fmt(review.medianMs)} at or under the ${fmt(review.fastMs)} line — success streak ${review.record.successes}, next review ${due}`
-    :`median ${fmt(review.medianMs)} above the ${fmt(review.fastMs)} line — streak reset, reviews again ${due}`;
-  const ladder=`next drill runs at ${esc(nextTier)} difficulty (streak-based heuristic, speed evidence only)`;
-  return `<p class="small muted">Pattern review recorded · ${esc(review.label)}: ${review.solveCount} solves · ${esc(pace)}. ${ladder}. Spacing-only heuristic; it does not measure accuracy or promise score gains.</p>`;
+    ?`median ${fmt(review.medianMs)} at or under the ${fmt(review.fastMs)} line, ${review.cleanCount} of ${review.solveCount} solves without a wrong answer — success streak ${review.record.successes}, next review ${due}`
+    :review.cleanShare < 0.5
+      ?`${review.wrongAttemptSolves} of ${review.solveCount} solves answered wrong before correcting — streak reset, reviews again ${due}`
+      :`median ${fmt(review.medianMs)} above the ${fmt(review.fastMs)} line — streak reset, reviews again ${due}`;
+  const ladder=`next drill runs at ${esc(nextTier)} difficulty (streak-based heuristic from speed and wrong-attempt evidence)`;
+  return `<p class="small muted">Pattern review recorded · ${esc(review.label)}: ${review.solveCount} solves · ${esc(pace)}. ${ladder}. Spacing heuristic; "wrong answer" means a complete wrong value typed or Enter pressed on a wrong field (self-corrected slips don't fail a review), older records carry no wrong-attempt history, and none of this promises score gains.</p>`;
 }
 const ERROR_LABELS={clean:'Clean entry',revision:'Revised (deleted a correct digit)',slip:'Slip (wrong digit, fixed mid-entry)',calculation:'Calculation error (complete wrong answer first)'};
 function typologyHtml(t){
@@ -523,7 +525,7 @@ function cellDetailHtml(c,h){
     <dl class="cell-stats"><dt>Solved</dt><dd>${c.count} <span class="muted">(${esc(c.evidence)})</span></dd><dt>Median</dt><dd>${fmt(c.medianMs)}</dd><dt>95% CI of median</dt><dd>${ci}</dd><dt>Smoothed relative speed</dt><dd>${rel}</dd><dt>Not clean entry</dt><dd>${c.flawedShare===null?'—':Math.round(100*c.flawedShare)+'%'}</dd></dl>
     <button type="button" class="primary-btn" id="drill-cell">Drill ${esc(c.label)} · 60s practice ↗</button>
     <button type="button" class="secondary-btn" id="flash-cell">Automaticity drill · flash 60s ↗</button>
-    <p class="small muted">Drills only show problems from this cell and are saved as practice. They never count toward benchmark scores, and they're excluded from the benchmark-only heatmap. A finished 60-second drill records a spaced review for this pattern (speed-based), and later drills auto-tune: a lapse narrows to the easier half of the cell, four consecutive fast runs stretch into the neighboring band (Train tab → due reviews). The automaticity drill adds a 2-second flash cap per question and does not feed that ladder.</p>`;
+    <p class="small muted">Drills only show problems from this cell and are saved as practice. They never count toward benchmark scores, and they're excluded from the benchmark-only heatmap. A finished 60-second drill records a spaced review for this pattern (speed and wrong-attempt based), and later drills auto-tune: a lapse narrows to the easier half of the cell, four consecutive fast runs stretch into the neighboring band (Train tab → due reviews). The automaticity drill adds a 2-second flash cap per question and does not feed that ladder.</p>`;
 }
 function renderHeatmap(){
   const root=$('#heatmap-root'); if(!root)return;
