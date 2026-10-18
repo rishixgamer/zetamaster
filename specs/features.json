@@ -244,7 +244,7 @@
    "status": "partial",
    "owner": "analytics",
    "acceptance": [
-    "Transparent smoothed proxy exists; calibrate probabilistic model on held-out sessions"
+    "Transparent smoothed proxy exists with an explicit formula (packages/training/src/impact.js: per-category share and excess, degenerate-input guards, hard +30 cap, impossible paces refused); the pace-to-points basis is calibrated same-data per realized benchmark run (calibrateImpactModel: predicted budget/mean vs the run's own correct-answer count, sample-gated at >= 6 runs, mean absolute error and <= 10% hit share reported); still partial: no probabilistic mastery model, the category step (share x excess) and all training-gain predictions remain unvalidated because no treatment history exists (M4/F37)"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -256,7 +256,7 @@
    "status": "partial",
    "owner": "training",
    "acceptance": [
-    "Priority heuristic exists; compare predicted versus observed training gains"
+    "Priority inputs are implemented and ranked: candidatePriority (planner.js) plus impactCandidates rows from verified benchmark scope only (cell rows sample-gated with shrunken ratio > 1, op rows stated against the weighted cross-operation median), merged into one evidence-quoted recommendation list (recommendations.js) and compared across three feature-flagged concentration policies (policies.js: summed projected impact, seeded balanced A/B emphasis via assignStrategyTrial, allow-listed flag override, ranking deterministic with explicit tie-breaks); still partial: predicted-versus-observed TRAINING-gain calibration needs recorded treatment runs \u2014 nothing tracks which policy produced a run, so comparePolicies explicitly disclaims any claim that one policy beats another (M4/F37)"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -460,7 +460,7 @@
    "status": "implemented",
    "owner": "training/web",
    "acceptance": [
-    "Recommendations cite the exact evidence that produced them and name specific next actions: the daily plan's rationale names the slowest gated skill pattern with its shrunken ratio and solve count and points to its launch points, the plateau branch's 'why' (F22) carries the evidence and its 'actions' render in the Train tab's progress line as a concrete sequence ('next: weakness gauntlet \u2192 transfer probe \u2192 standard benchmark'), and the coverage line states taxonomy reach with per-operation stable counts; every surface degrades gracefully with no data (empty states, no fabricated homework); explicit out-of-scope: efficacy claims for any listed action and calibrated mastery modeling (F20/F21 evaluation remains open)"
+    "Recommendations cite the exact evidence that produced them and name specific next actions (F38, extended in M2 slice 6): the daily plan's rationale names the slowest gated skill pattern with its shrunken ratio and solve count and points to its launch points, the plateau branch's 'why' (F22) carries the evidence and its 'actions' render in the Train tab's progress line as a concrete sequence ('next: weakness gauntlet \u2192 transfer probe \u2192 standard benchmark'), and buildRecommendations (packages/training/src/recommendations.js) fuses due spaced reviews, weakest sample-gated cells, the plateau protocol and one estimated-payoff row into a single deterministic Train-tab list whose items quote their numbers and launch real practice drills, with a seeded policy-emphasis line beneath; every surface degrades gracefully with no data (empty states, coverage 'build evidence first' nudge, no fabricated homework); explicit out-of-scope: efficacy claims for any listed action and calibrated mastery modeling (F20/F21 evaluation remains open)"
    ],
    "dependencies": [],
    "benchmarkSafe": true

@@ -17,6 +17,8 @@ import { gauntletPlan, gauntletLaunch, gauntletGenerator } from '../../../packag
 import { scoreChartSvg, chartLayout, nearestIndex, CHART } from './score-chart.js';
 import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
+import { buildRecommendations } from '../../../packages/training/src/recommendations.js';
+import { comparePolicies } from '../../../packages/training/src/policies.js';
 import { LESSONS } from '../../../packages/curriculum/src/lessons.js';
 import { suggestLesson } from '../../../packages/curriculum/src/explanations.js';
 import { listSessions, saveSession, deleteAllSessions, importSessions, importSkillReviews, listSkillReviews, recordSkillReview, listDailyPlans, saveDailyPlan, importDailyPlans, deleteAllDailyPlans } from '../../../packages/storage/src/db.js';
@@ -57,6 +59,7 @@ async function refresh() {
   renderAnalytics();
   renderReviewQueue();
   renderGauntlet();
+  renderRecommendations();
 }
 
 // Daily plan (F34): steps regenerate from history every refresh; only *completion* persists (one
@@ -138,8 +141,45 @@ function renderReviewQueue(){
     if(cell)startGame({drill:{...cell,tier:Number.isInteger(tier)?tier:undefined}});
   }));
 }
-function setView(view) {
-  $$('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+view));
+// Merged, evidence-linked recommendations (F38) plus the seeded policy-comparison card (F21). The
+// list is pure data from packages/training/src/recommendations.js; buttons reuse the drill launch
+// path so every recommendation lands in an actual practice run, never a claim.
+function deviceSeed() {
+  try {
+    const existing = localStorage.getItem('zetamaster-device-seed');
+    if (existing) return existing;
+    const seed = crypto.randomUUID();
+    localStorage.setItem('zetamaster-device-seed', seed);
+    return seed;
+  } catch { return crypto.randomUUID(); }
+}
+function renderRecommendations() {
+  const root=$('#recs-panel'); if(!root)return;
+  let items=[], policy=null, error=null;
+  try {
+    const recs=buildRecommendations({sessions,reviews:skillReviews,now:new Date().toISOString()});
+    items=recs.items;
+    policy=comparePolicies(sessions,{seed:deviceSeed(),flag:localStorage.getItem('zetamaster-policy')});
+  } catch(e){error=e.message;}
+  const kindLabels={review:'review', 'weak-cell': 'pattern', plateau:'protocol', impact:'estimate', coverage:'start'};
+  const rows=items.length?items.map(item=>{
+    const launchBtn=item.launch.type==='drill'
+      ?`<button type="button" class="secondary-btn" data-rec-drill="${esc(item.launch.cell.id??item.launch.cell.label)}">Drill 60s <span aria-hidden="true">↗</span></button>`
+      : (item.launch.type==='panel'?'<a class="review-meta" href="#gauntlet-panel">gauntlet panel ↓</a>':'');
+    return `<div class="review-row"><span class="review-label">${esc(item.title)}</span><span class="review-meta">${esc(item.why)}${item.evidence?.length?` · ${esc(item.evidence.join(' · '))}`:''}</span>${launchBtn}</div>`;
+  }).join(''):`<div class="empty">No recommendations yet — run a benchmark to start the evidence.</div>`;
+  root.innerHTML=`<div class="section-header"><div><div class="eyebrow">PROGRESS-BASED RECOMMENDATIONS · MERGED</div><h2 class="section-title">What's worth doing next</h2></div><span class="tag">${items.length} LEAD${items.length===1?'':'S'}</span></div>
+    ${error?`<p class="secondary">Recommendations unavailable: ${esc(error)}</p>`:`<div class="review-list">${rows}</div>
+    <div class="subline" id="policy-compare">${esc(policy?.note??'Policy comparison unavailable.')}</div>`}
+    <p class="small muted">Recommendations merge due pattern reviews, the weakest sample-gated patterns, the plateau protocol and one estimated-payoff line (reads your verified benchmark pace and medians). Estimates are arithmetic on your own history, not predictions of what training will achieve. The policy line only chooses which surface to emphasize; no run-outcome tracking exists (${esc(policy?.assignment ?? '')}).</p>`;
+  root.querySelectorAll('[data-rec-drill]').forEach(btn=>btn.addEventListener('click',()=>{
+    const item=items.find(x=>x.launch.type==='drill'&&((x.launch.cell.id??x.launch.cell.label)===btn.dataset.recDrill||x.launch.cell.label===btn.dataset.recDrill));
+    if(!item)return;
+    const cell=skillCellFromId(item.launch.cell.id)??item.launch.cell;
+    startGame({drill:{...cell,tier:drillTierForRecord(item.launch.record)}});
+  }));
+}
+function setView(view) {  $$('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+view));
   $$('.nav-link').forEach(x=>x.classList.toggle('active',x.dataset.view===view));
   window.scrollTo({top:0,behavior:'auto'});
 }

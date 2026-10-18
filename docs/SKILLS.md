@@ -263,6 +263,37 @@ calendar day — a UTC key would roll over mid-evening for users west of UTC).
   benchmark`), so the recommendation names what to do rather than a vague "practice
   more"; recommendation surfaces degrade gracefully with no data.
 
+## Estimated score impact, recommendations and policy comparison (F20/F21/F38, slice 6)
+
+`packages/training/src/impact.js` states its whole model in one formula: a standard benchmark
+awards one point per correct answer in `budgetMs`, and your recorded pace (`meanResponseMs`
+over the last verified runs) predicts `budgetMs / meanResponseMs` points per run. A category
+running `excessMs` slower than its reference, at `share` of observed solves, would add
+
+`estDelta = budgetMs / (meanResponseMs − share × excessMs) − budgetMs / meanResponseMs`
+
+points per run if closed. Inputs are guarded (null on degenerate histories, `share` capped at
+0.9, results capped at +30, impossible paces refused), and every row states its share, both
+medians and the estimate, so the arithmetic is reproducible from the row alone.
+
+- **Calibration, honestly scoped** (`calibrateImpactModel`): per verified benchmark run it
+  compares the predicted `budgetMs / meanResponse` against the run's own correct-answer count,
+  reporting absolute-mean error and the ≤10% hit share, gated at ≥ 6 runs with per-run minimum
+  solves. Deliberately same-data: it validates the pace→points arithmetic, not the future. The
+  category step (`share × excess`) remains **unvalidated** — measuring it needs recorded
+  treatment history (M4 experiments, F37).
+- **Merged recommendations** (`buildRecommendations`, F38): one deterministic list fusing the
+  existing evidence surfaces — due spaced reviews first, then weakest sample-gated cells, then
+  the plateau branch (a protocol item), then a top estimated-payoff row, and a coverage "build
+  evidence first" item only when the list is otherwise empty. Each item quotes its numbers
+  (ratio, solve count, due dates) and carries launch data wired to the drill launch path.
+- **Policy comparison, flagged** (`comparePolicies`/`projectPolicy` in
+  `packages/training/src/policies.js`): three named concentration policies (operation-adaptive
+  mix, cell gauntlet rotation, automaticity ladder), each scored by its candidates' summed
+  `estDelta`; emphasis is placement only — a seeded balanced A/B (`assignStrategyTrial`) or an
+  allow-listed feature flag, with the note saying plainly that **no outcome tracking exists yet**
+  and nothing can claim one policy is better. Device seed is stable per browser.
+
 ## What this slice does not claim
 
 - No evidence yet that pattern drills improve benchmark scores; that measurement (train/holdout and
@@ -278,6 +309,10 @@ calendar day — a UTC key would roll over mid-evening for users west of UTC).
   hypotheses from record evidence, not measured treatments (F21/F22 evaluate them).
 - The coverage meter describes *reach* (how much of the 420-cell taxonomy the history has touched),
   not ability or mastery; a high share is not an achievement metric and stable evidence ≠ skill.
+- Score-impact estimates are arithmetic on your own recorded medians: they say what closing a gap
+  would be worth *if* freed seconds converted to correct answers, which is an assumption, not a
+  measurement; the category step has no calibration and the policy comparison has no outcome
+  tracking, so no ranking of training strategies is supportable yet (F20/F21 remain partial).
 - Review outcomes measure **speed only**. The engine does not persist wrong attempts (the F07
   correction-semantics follow-up), so "fast *and* correct" reduces, in practice, to the speed rule
   above; lapses are "recall was not automatic", not "answers were wrong".
