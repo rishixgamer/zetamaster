@@ -31,6 +31,11 @@ import { suggestLesson } from '../../../packages/curriculum/src/explanations.js'
 import { listSessions, saveSession, deleteAllSessions, importSessions, importSkillReviews, listSkillReviews, recordSkillReview, listDailyPlans, saveDailyPlan, importDailyPlans, deleteAllDailyPlans } from '../../../packages/storage/src/db.js';
 import { downloadJson, downloadCsv, exportBundle, parseExportBundle } from '../../../packages/storage/src/export.js';
 import { reconcilePlan, togglePlanStep, completedMinutes, dayLogKey, planRecordFrom } from '../../../packages/training/src/daylog.js';
+import { evaluateBenchmarkRank, evaluatePracticeActivity, COMMUNITY_RANKS, getRankForScore } from '../../../packages/community/src/ranks.js';
+import { evaluateAchievements, ACHIEVEMENT_CATALOG } from '../../../packages/community/src/achievements.js';
+import { encodeChallenge, decodeChallenge, buildChallengeUrl, parseChallengeFromUrl } from '../../../packages/community/src/challenges.js';
+import { verifyBenchmarkSession } from '../../../packages/services/src/anti-cheat.js';
+import { submitLeaderboardScore, getLeaderboardRankings, readLeaderboardConsent, setLeaderboardConsent, sanitizeAlias, defaultLeaderboardStore } from '../../../packages/services/src/leaderboard.js';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -78,6 +83,7 @@ async function refresh() {
   renderGauntlet();
   renderIntervals();
   renderRecommendations();
+  renderCommunity();
 }
 
 // Daily plan (F34): steps regenerate from history every refresh; only *completion* persists (one
@@ -1141,6 +1147,376 @@ function renderCalibrationModal() {
   }
 }
 
+
+function renderCommunity() {
+  const root = $('#community-root');
+  if (!root) return;
+  const rankEval = evaluateBenchmarkRank(sessions);
+  const practiceStats = evaluatePracticeActivity(sessions);
+  const achEval = evaluateAchievements(sessions, { skillReviews });
+  const consent = readLeaderboardConsent(localStorage);
+  const currentAlias = localStorage.getItem('zetamaster-player-alias-v1') || '';
+  const leaderboardEntries = defaultLeaderboardStore.getEntries(20);
+
+  const rank = rankEval.rank;
+  const rankHtml = `
+    <div class="panel community-full">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">SUSTAINED VERIFIED BENCHMARK RANK · F44</div>
+          <h2 class="section-title">Verified Benchmark Standing</h2>
+        </div>
+        <span class="tag">${rankEval.calibrated ? 'CALIBRATED' : 'CALIBRATING'}</span>
+      </div>
+      <div class="rank-badge-display">
+        <div class="rank-badge-icon">${rank.badge}</div>
+        <div>
+          <div class="rank-badge-title">${esc(rank.title)}</div>
+          <div class="rank-badge-desc">${esc(rank.description)}</div>
+        </div>
+      </div>
+      <div class="rank-stats-row">
+        <div class="rank-stat">
+          <div class="rank-stat-label">Sustained Median</div>
+          <div class="rank-stat-val">${rankEval.sustainedScore !== null ? rankEval.sustainedScore : '—'}</div>
+        </div>
+        <div class="rank-stat">
+          <div class="rank-stat-label">Verified Runs</div>
+          <div class="rank-stat-val">${rankEval.verifiedCount} <small style="font-size:12px;color:var(--muted)">/ ${rankEval.minRequired}</small></div>
+        </div>
+        <div class="rank-stat">
+          <div class="rank-stat-label">Stability (IQR)</div>
+          <div class="rank-stat-val">${rankEval.stability ? '±' + rankEval.stability.iqr : '—'}</div>
+        </div>
+        <div class="rank-stat">
+          <div class="rank-stat-label">Next Rank</div>
+          <div class="rank-stat-val">${rankEval.nextRank ? esc(rankEval.nextRank.title) + ' (+' + rankEval.pointsToNext + ')' : 'MAX TIER'}</div>
+        </div>
+      </div>
+      <p class="small muted">${esc(rankEval.isolationNotice)} Practice runs: ${practiceStats.sessionsCount} (${practiceStats.totalSolves} solves) tracked separately.</p>
+    </div>
+  `;
+
+  const challengeHtml = `
+    <div class="panel">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">HEAD-TO-HEAD CHALLENGES · F47</div>
+          <h2 class="section-title">Challenge Sharing</h2>
+        </div>
+        <span class="tag">ZERO PII</span>
+      </div>
+      <p class="secondary">Share reproducible, tamper-proof challenge links containing only seed and ruleset. Links contain zero personal identifiers or telemetry.</p>
+      <div class="challenge-controls">
+        <label class="field">
+          <span>CHALLENGE SEED</span>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="ch-seed-input" value="ch-${Date.now().toString(36)}" style="flex:1;">
+            <button type="button" class="secondary-btn" id="ch-rand-seed-btn">🎲 Random</button>
+          </div>
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>DURATION</span>
+            <select id="ch-duration-select">
+              <option value="30">30s sprint</option>
+              <option value="60">60s test</option>
+              <option value="120" selected>120s standard</option>
+              <option value="300">300s marathon</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>QUESTION BUDGET</span>
+            <select id="ch-budget-select">
+              <option value="" selected>Unlimited (standard)</option>
+              <option value="2000">2000ms (automaticity)</option>
+              <option value="3000">3000ms (pace)</option>
+            </select>
+          </label>
+        </div>
+        <button type="button" class="primary-btn" id="ch-generate-btn">Generate Challenge URL ↗</button>
+        <div class="copy-row" id="ch-url-row" style="display:none;">
+          <input type="text" id="ch-url-output" readonly>
+          <button type="button" class="secondary-btn" id="ch-copy-btn">📋 Copy</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
+          <label class="field">
+            <span>LOAD CHALLENGE LINK OR TOKEN</span>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="ch-import-input" placeholder="Paste #challenge=zmch_... token">
+              <button type="button" class="secondary-btn" id="ch-import-btn">Load</button>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const consentChecked = consent.enabled ? 'checked' : '';
+  const entriesRows = leaderboardEntries.length
+    ? leaderboardEntries.map(e => `
+        <tr>
+          <td class="rank-cell">#${e.rank}</td>
+          <td><strong>${esc(e.alias)}</strong></td>
+          <td><strong>${e.score}</strong></td>
+          <td>${e.meanLatencyMs}ms</td>
+          <td><small class="muted">${new Date(e.verifiedAt).toLocaleDateString()}</small></td>
+        </tr>
+      `).join('')
+    : '<tr><td colspan="5" class="empty" style="text-align:center;padding:16px;">No verified scores submitted yet.</td></tr>';
+
+  const leaderboardHtml = `
+    <div class="panel">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">GLOBAL LEADERBOARDS · F46</div>
+          <h2 class="section-title">Verified Leaderboard</h2>
+        </div>
+        <span class="tag">${consent.enabled ? 'OPTED-IN' : 'OFFLINE'}</span>
+      </div>
+      <div class="consent-banner">
+        <label class="consent-toggle-row">
+          <input type="checkbox" id="lb-consent-toggle" ${consentChecked}>
+          <span><strong>Opt in to Global Leaderboard</strong> (Disabled by default)</span>
+        </label>
+        <p class="small muted" style="margin-top:6px;">When enabled, you can submit verified benchmark scores. Submissions are checked draw-for-draw against deterministic replay and human reaction bounds. No PII is collected.</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;">
+        <label class="field inline" style="flex:1;min-width:180px;">
+          <span>PLAYER ALIAS (NO PII)</span>
+          <input type="text" id="lb-alias-input" value="${esc(currentAlias)}" placeholder="e.g. SpeedCalc99" maxlength="20">
+        </label>
+        <button type="button" class="primary-btn" id="lb-submit-latest-btn" ${consent.enabled ? '' : 'disabled'}>Submit Latest Benchmark ↗</button>
+      </div>
+      <div id="lb-status-msg" style="font-size:12px;margin-bottom:8px;"></div>
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Player Alias</th>
+            <th>Score</th>
+            <th>Avg Latency</th>
+            <th>Verified Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entriesRows}
+        </tbody>
+      </table>
+      <div class="subline" style="margin-top:12px;">
+        <button type="button" class="text-btn" id="lb-clear-btn">Clear local cache / forget entries</button>
+      </div>
+    </div>
+  `;
+
+  const achCards = achEval.achievements.map(a => `
+    <div class="achievement-card ${a.unlocked ? 'unlocked' : 'locked'}">
+      <div>
+        <div class="ach-header">
+          <div class="ach-icon">${a.icon}</div>
+          <div style="flex:1;">
+            <div class="ach-title">${esc(a.title)}</div>
+            <span class="ach-tag ${a.unlocked ? 'ach-unlocked-tag' : 'ach-locked-tag'}">${a.unlocked ? 'Unlocked' : 'Locked'}</span>
+          </div>
+        </div>
+        <div class="ach-desc">${esc(a.description)}</div>
+      </div>
+      <div>
+        <div class="ach-progress-bar">
+          <div class="ach-progress-fill" style="width:${Math.round(a.progress * 100)}%;"></div>
+        </div>
+        <div class="ach-meta">
+          ${a.unlocked
+            ? `Completed ${a.unlockedAt ? new Date(a.unlockedAt).toLocaleDateString() : ''}`
+            : `Progress: ${Math.round(a.current)} / ${a.target}`
+          }
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  const achievementsHtml = `
+    <div class="panel community-full">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">SKILL-BASED ACHIEVEMENTS · F45</div>
+          <h2 class="section-title">Mastery Achievements</h2>
+        </div>
+        <span class="tag">${achEval.totalUnlocked} / ${achEval.totalAchievements} UNLOCKED (${achEval.completionPercentage}%)</span>
+      </div>
+      <p class="secondary">${esc(achEval.antiCompulsiveNotice)}</p>
+      <div class="achievements-grid">
+        ${achCards}
+      </div>
+    </div>
+  `;
+
+  root.innerHTML = `
+    <div class="community-grid">
+      ${rankHtml}
+      ${challengeHtml}
+      ${leaderboardHtml}
+      ${achievementsHtml}
+    </div>
+  `;
+
+  $('#ch-rand-seed-btn')?.addEventListener('click', () => {
+    $('#ch-seed-input').value = 'ch-' + Math.random().toString(36).slice(2, 8);
+  });
+
+  $('#ch-generate-btn')?.addEventListener('click', () => {
+    try {
+      const seed = $('#ch-seed-input').value.trim() || 'default-ch-seed';
+      const durationSeconds = Number($('#ch-duration-select').value) || 120;
+      const budgetVal = $('#ch-budget-select').value;
+      const questionBudgetMs = budgetVal ? Number(budgetVal) : undefined;
+
+      const url = buildChallengeUrl(location.origin + location.pathname, {
+        seed,
+        durationSeconds,
+        questionBudgetMs,
+      });
+
+      $('#ch-url-output').value = url;
+      $('#ch-url-row').style.display = 'flex';
+    } catch (err) {
+      alert('Failed to generate challenge: ' + err.message);
+    }
+  });
+
+  $('#ch-copy-btn')?.addEventListener('click', () => {
+    const output = $('#ch-url-output');
+    output.select();
+    navigator.clipboard?.writeText?.(output.value);
+    $('#ch-copy-btn').textContent = '✓ Copied!';
+    setTimeout(() => { $('#ch-copy-btn').textContent = '📋 Copy'; }, 2000);
+  });
+
+  $('#ch-import-btn')?.addEventListener('click', () => {
+    const raw = $('#ch-import-input').value.trim();
+    if (!raw) return;
+    try {
+      const decoded = parseChallengeFromUrl(raw);
+      if (!decoded) throw new Error('Unrecognized challenge format');
+      openChallengeModal(decoded);
+    } catch (err) {
+      alert('Could not load challenge: ' + err.message);
+    }
+  });
+
+  $('#lb-consent-toggle')?.addEventListener('change', (e) => {
+    const enabled = e.target.checked;
+    setLeaderboardConsent(localStorage, enabled, new Date().toISOString());
+    renderCommunity();
+  });
+
+  $('#lb-alias-input')?.addEventListener('change', (e) => {
+    try {
+      const sanitized = sanitizeAlias(e.target.value);
+      localStorage.setItem('zetamaster-player-alias-v1', sanitized);
+      e.target.value = sanitized;
+    } catch (err) {
+      alert('Invalid handle: ' + err.message);
+      e.target.value = localStorage.getItem('zetamaster-player-alias-v1') || '';
+    }
+  });
+
+  $('#lb-submit-latest-btn')?.addEventListener('click', () => {
+    const statusMsg = $('#lb-status-msg');
+    try {
+      const alias = $('#lb-alias-input').value.trim();
+      if (!alias) {
+        statusMsg.innerHTML = '<span style="color:#fb8c78">Please enter a player alias.</span>';
+        return;
+      }
+      const verifiedBenchmarks = sessions.filter(
+        s => s && s.benchmark === true && s.mode === 'benchmark' && s.elapsedMs >= 120000
+      );
+      if (!verifiedBenchmarks.length) {
+        statusMsg.innerHTML = '<span style="color:#fb8c78">No completed 120s benchmark found to submit.</span>';
+        return;
+      }
+      const latest = verifiedBenchmarks[verifiedBenchmarks.length - 1];
+      const res = submitLeaderboardScore({
+        session: latest,
+        alias,
+        consent: readLeaderboardConsent(localStorage),
+        now: new Date().toISOString(),
+      });
+      statusMsg.innerHTML = `<span style="color:#6ee7b7">✓ Score ${res.entry.score} verified! Ranked #${res.rank} of ${res.totalEntries}.</span>`;
+      renderCommunity();
+    } catch (err) {
+      statusMsg.innerHTML = `<span style="color:#fb8c78">Submission failed: ${esc(err.message)}</span>`;
+    }
+  });
+
+  $('#lb-clear-btn')?.addEventListener('click', () => {
+    if (confirm('Clear local leaderboard cache and forget stored alias?')) {
+      defaultLeaderboardStore.clear();
+      localStorage.removeItem('zetamaster-player-alias-v1');
+      renderCommunity();
+    }
+  });
+}
+
+function openChallengeModal(challenge) {
+  const modal = $('#challenge-modal');
+  const body = $('#challenge-modal-body');
+  if (!modal || !body) return;
+
+  const opsList = (challenge.rules.enabled || []).map(o => opNames[o] || o).join(', ');
+  body.innerHTML = `
+    <div style="padding:10px 0;">
+      <p class="secondary">You received an arithmetic challenge with a pinned seed and ruleset. Both players face the exact same problem sequence.</p>
+      <div class="rank-stats-row" style="margin:16px 0;">
+        <div class="rank-stat">
+          <div class="rank-stat-label">Seed</div>
+          <div class="rank-stat-val" style="font-size:14px;word-break:break-all;">${esc(challenge.seed)}</div>
+        </div>
+        <div class="rank-stat">
+          <div class="rank-stat-label">Duration</div>
+          <div class="rank-stat-val">${challenge.rules.durationSeconds}s</div>
+        </div>
+        <div class="rank-stat">
+          <div class="rank-stat-label">Operations</div>
+          <div class="rank-stat-val" style="font-size:14px;">${esc(opsList)}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+        <button type="button" class="secondary-btn" id="ch-modal-cancel">Decline</button>
+        <button type="button" class="primary-btn" id="ch-modal-accept">Accept & Start Challenge ↗</button>
+      </div>
+    </div>
+  `;
+
+  $('#ch-modal-cancel')?.addEventListener('click', () => modal.close());
+  $('#ch-modal-accept')?.addEventListener('click', () => {
+    modal.close();
+    setView('train');
+    showIdle();
+    startGame({
+      preset: {
+        rules: challenge.rules,
+        seed: challenge.seed,
+        mode: 'custom',
+      },
+    });
+  });
+
+  modal.showModal();
+}
+
+function checkUrlChallenge() {
+  try {
+    const challenge = parseChallengeFromUrl(location.href);
+    if (challenge) {
+      openChallengeModal(challenge);
+    }
+  } catch (err) {
+    console.warn('Could not parse challenge from URL', err);
+  }
+}
+
 function bind(){
   $$('.nav-link').forEach(btn=>btn.addEventListener('click',()=>setView(btn.dataset.view)));
   $('#brand').addEventListener('click',e=>{e.preventDefault();setView('train');});
@@ -1160,7 +1536,9 @@ function bind(){
   $('#open-calibration')?.addEventListener('click',openCalibrationModal);
   $('#calib-close')?.addEventListener('click',closeCalibrationModal);
   $('#calibration-modal')?.addEventListener('cancel',closeCalibrationModal);
+  $('#challenge-modal-close')?.addEventListener('click',()=>$('#challenge-modal')?.close());
+  $('#challenge-modal')?.addEventListener('cancel',()=>$('#challenge-modal')?.close());
   $$('#lesson-filters button').forEach(button=>button.addEventListener('click',()=>{$$('#lesson-filters button').forEach(b=>b.classList.toggle('selected',b===button));renderLessons(button.dataset.op);}));
 }
-bind();updateMode();renderLessons();renderRoadmap();applyHeatmapHash();refresh().catch(error=>console.error('History loading failed',error));
+bind();updateMode();renderLessons();renderRoadmap();renderCommunity();checkUrlChallenge();applyHeatmapHash();refresh().catch(error=>console.error('History loading failed',error));
 if('serviceWorker' in navigator && location.protocol!=='file:')navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(error=>console.warn('Offline registration unavailable',error));

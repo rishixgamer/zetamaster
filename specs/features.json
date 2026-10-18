@@ -541,7 +541,7 @@
    "id": "F44",
    "area": "Community",
    "title": "Ranking system",
-   "status": "planned",
+   "status": "implemented",
    "owner": "community",
    "acceptance": [
     "Sustained verified benchmark ranks separated from practice ranks"
@@ -553,7 +553,7 @@
    "id": "F45",
    "area": "Community",
    "title": "Skill-based achievements",
-   "status": "planned",
+   "status": "implemented",
    "owner": "community",
    "acceptance": [
     "Grant goals based on correct verified events; avoid rewarding idle screen time"
@@ -565,7 +565,7 @@
    "id": "F46",
    "area": "Community",
    "title": "Global leaderboards",
-   "status": "planned",
+   "status": "implemented",
    "owner": "services",
    "acceptance": [
     "Explicit opt-in server verified rankings with abuse and privacy protections"
@@ -577,7 +577,7 @@
    "id": "F47",
    "area": "Community",
    "title": "Challenge sharing",
-   "status": "planned",
+   "status": "implemented",
    "owner": "services/web",
    "acceptance": [
     "Share ruleset+seed via URL; ensure no PII in shared links"
