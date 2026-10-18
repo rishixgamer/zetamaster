@@ -1,4 +1,4 @@
-# Skill taxonomy, pattern rollups and spaced repetition (F17/F19)
+# Skill taxonomy, pattern rollups and spaced repetition with adaptive drill difficulty (F17/F18/F19)
 
 All definitions below are deterministic and seed-free. Every public metric here inherits a
 sample-size caveat: medians from fewer than 6 observations get no confidence interval, and nothing
@@ -172,14 +172,62 @@ finished run and the UI shows the outcome in the drill result panel.
 | `skipped` | records whose id does not name a current-taxonomy cell, or whose `nextReviewAt` is unparseable — hidden and counted, never reinterpreted |
 
 Due rows launch a `patternDrill` for their cell; practicing early records that run's outcome and
-reschedules from today (the scheduler only ever sees one `now`). The panel shows streaks, lapse
-counts and the current interval per record, plus an honest empty state: records exist only after
-drill runs or imports, so a fresh profile sees no fabricated homework.
+reschedules from today (the scheduler only ever sees one `now`). A row shows the tier its next drill
+will run at (`drillTierForRecord(record)`, below). The panel shows streaks, lapse counts and the
+current interval per record, plus an honest empty state: records exist only after drill runs or
+imports, so a fresh profile sees no fabricated homework.
+
+## Adaptive drill difficulty and mix (F18, slice 3)
+
+Pattern drills run at one of three tiers inside their single skill cell
+(`DRILL_TIERS`, `packages/training/src/drills.js`):
+
+| tier | name | operand ranges |
+|---|---|---|
+| 1 | Narrow | each band trimmed to its lower half — `[lo, lo + ⌊(hi−lo)/2⌋]`; smaller operands are the easier entry point, and single-value bands (a table factor's `[7, 7]`) stay single |
+| 2 | Full | exactly the cell's bands — the pre-F18 behavior and the default |
+| 3 | Stretch | full cell plus exactly **one** adjacent band along one axis (row axis first, then column), interleaving two neighboring patterns |
+
+Tier selection (`drillTierForRecord`) is cross-run and driven only by the F19 record's success
+streak — the same counters that drive the interval ladder:
+
+| record state | next tier |
+|---|---|
+| no record, or a non-integer / negative streak (no usable evidence) | 2 · Full |
+| streak 0 — the last review lapsed | 1 · Narrow |
+| streak 1–3 — fresh consecutive fast runs | 2 · Full |
+| streak ≥ 4 — four consecutive fast runs | 3 · Stretch |
+
+Guarantees, pinned property by property in `tests/drill-tiers.test.js`:
+
+- Tier 1 and 2 problems map to **exactly the drilled cell**: `skillOf(question).id === cell.id` for
+  every seeded draw.
+- A stretch touches exactly the bands the cell touched plus their upper neighbor — for every
+  taxonomy cell that means precisely *the cell and one adjacent cell*, both of which actually occur
+  in generated draws. Widened union ranges stay contiguous because layout bands partition each axis.
+- Stretches point to **larger operands** and never leave the benchmark operand space: when both
+  axes of a cell already end at their axis' top band the ladder caps (exactly `add:9:9`, `sub:9:9`,
+  `mul:10:9`, `div:10:9`) and tier 3 equals tier 2 — the widest cell has no harder partner inside
+  the benchmark's own maximum. Tier-1 ranges are always subsets of the cell's bands.
+- Every tier stays practice-only: `id: 'pattern-drill'`, `benchmarkEquivalent` false, and the
+  benchmark ruleset untouched (the byte-identity gate in tests/skills.test.js still applies).
+
+The never-mid-run rule is deliberate: a run's generated pool must be fixed at launch for the
+per-run speed review (above) to be interpretable, so the tier applies between runs via the stored
+record — the UI shows the tier in the review queue, on the drill's ruleset label, and in the
+result-panel line naming the next drill's difficulty.
 
 ## What this slice does not claim
 
 - No evidence yet that pattern drills improve benchmark scores; that measurement (train/holdout and
   predicted-vs-observed transfer) is F21/F22.
+- The F18 tier ladder is a heuristic on speed evidence only: "narrow after a lapse" and "stretch
+  after four fast runs" assume smaller operands are an easier entry point and larger neighbors are
+  harder, which is plausible, not measured; no in-run difficulty adaptation, no calibrated mastery
+  model, and no claim that stretched problems accelerate anything.
+- Cross-operation pattern mixing does not exist: the generator draws from one rectangle per
+  operation family, so v1 "mix" is interleaving one cell with its adjacent band only. A generator
+  extension (and its own parity audit) would precede any multi-operation pattern drill.
 - Review outcomes measure **speed only**. The engine does not persist wrong attempts (the F07
   correction-semantics follow-up), so "fast *and* correct" reduces, in practice, to the speed rule
   above; lapses are "recall was not automatic", not "answers were wrong".
