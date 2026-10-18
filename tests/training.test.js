@@ -33,7 +33,7 @@ test('quant generator separate namespace, deterministic',()=>{
     assert.deepEqual(a(),b());
     assert.equal(a().mode,'quant');b();
   }
-  assert.equal(DRILL_CATALOG.find(x=>x.id==='quant').implemented,false);
+  assert.equal(DRILL_CATALOG.find(x=>x.id==='quant').implemented,true);
   assert.equal(operationDrill('mul').enabled.length,1);
   assert.equal(sprintRules().durationSeconds,30);
 });

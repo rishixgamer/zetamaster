@@ -78,7 +78,7 @@ Current code: seeded generator, inverse questions, immutable benchmark config, l
 4. Market-making expected-value simulator with deterministic payoff checking.
 5. Distinct analytics and progress metrics; no blended 'Zetamac score'.
 
-**Gate:** Quant-only score data cannot enter benchmark/goal progress even with malformed import.
+**Gate:** Quant-only score data cannot enter benchmark/goal progress even with malformed import. Zero benchmark contamination verified by `tests/quant-isolation.test.js`.
 
 ## Success evaluation (cross-cutting)
 
