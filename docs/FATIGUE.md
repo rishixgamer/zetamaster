@@ -28,4 +28,29 @@ A positive value means slower later in the run. It describes your pattern and do
 | Tail by operation | median, 90th percentile, their ratio, slow count | per-operation raw times |
 | Costliest stalls | top 5 slow questions by excess time, with run number (matches the consistency chart) | |
 
-Still missing for F41: a full histogram of the adjusted distribution.
+## Adjusted distribution (F41)
+
+`relativeHistogram` in `packages/analytics/src/histogram.js` pools every analyzed adjusted solve from the standard runs into fixed log bins. Counting is deterministic and seed-free — the same sessions always give the same seven counts.
+
+Bin edges (a ratio lands in the bin whose **lower edge it reaches**, so half-open `[lo, hi)` ranges):
+
+| Bin | Range |
+|---|---|
+| `<×0.5` | 0 ≤ ratio < 0.5 |
+| `×0.5–0.75` | 0.5 ≤ ratio < 0.75 |
+| `×0.75–1` | 0.75 ≤ ratio < 1 |
+| `×1–1.5` | 1 ≤ ratio < 1.5 |
+| `×1.5–2` | 1.5 ≤ ratio < 2 |
+| `×2–3` | 2 ≤ ratio < 3 (tail starts here) |
+| `≥×3` | ratio ≥ 3 |
+
+Each row shows the exact count and the share of all analyzed solves, and the panel always prints the values next to the bars. The tail bins answer: **what fraction of solves take at least twice the typical time for their operation?**
+
+Cross-check with the slow rule (`slowShare`): the robust cutoff is `max(×2, median + 3·1.4826·MAD)` and is therefore **≥ ×2 by construction**. The ≥×2 share can only equal the slow share when the cutoff sits exactly on ×2 and no ratio lies exactly on the edge; otherwise the histogram share is the larger of the two. Two concrete ways they differ, both covered by `tests/histogram.test.js`:
+
+- A solve at **exactly ×2** enters the `×2–3` bin but fails the slow rule's strict `>` (and the cutoff may be at ×2). So a long tail ending exactly at twice typical is visible in the histogram while `slowShare` stays 0.
+- When the log MAD is large enough, the robust cutoff can move **past ×3**, in which case "slow questions" is the stricter view and the tiles should be read as the outlier rule, the histogram as the fixed-lens distribution.
+
+Movement across runs: the ≥×2 share per run is fed into the consistency module's Theil–Sen `trend` (95% CI, null below 6 runs), reusing exactly the same slope rule as the other panels. Runs whose solves were all skipped contribute zero, mirroring the entry-quality panel.
+
+Caveats. The section is gated below **30 adjusted solves** (`MIN_HIST_OBS`); below that the counts would look stable while the shares are not. Solves from old engine-1 records use a derived start time and are counted and flagged. The pooled distribution mixes operations after adjustment and whole runs across days, so a shift in it describes the changed mix of solve speeds — it is not, by itself, evidence that removing tail solves would produce score gains, and no points are awarded per solve saved.

@@ -493,10 +493,11 @@
       "id": "F41",
       "area": "Laboratory",
       "title": "Response-time distribution modeling",
-      "status": "partial",
+      "status": "implemented",
       "owner": "analytics",
       "acceptance": [
-        "Robust slow-question cutoff, slow share, time lost per run, per-operation p50/p90 and costliest stalls exist; add an adjusted-distribution histogram view"
+        "Adjusted-distribution histogram beside the slow-tail metrics (robust cutoff, slow share, time lost per run, per-operation p50/p90, costliest stalls): fixed log bins [\u00d70.5, 0.75, 1, 1.5, 2, 3, \u221e) lower-edge-inclusive, exact counts/shares beside bars, \u22652\u00d7-typical tail share cross-checked against the shared robust cutoff, Theil\u2013Sen tail-share movement reusing the consistency trend (\u22656 runs), gated below 30 adjusted solves with empty/sparse/engine-1 states (docs/FATIGUE.md)",
+        "Benchmark isolation preserved: the histogram reads verified standard runs only (scope 'benchmark') and no scoring, eligibility or generator code is touched"
       ],
       "dependencies": [],
       "benchmarkSafe": true

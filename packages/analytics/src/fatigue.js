@@ -61,6 +61,17 @@ export function paceProfile(sessions, { segments = 4, minRuns = MIN_PACE_RUNS } 
 }
 
 /**
+ * Robust slow cutoff on the log scale (F41): the larger of ln 2 and (median + 3·1.4826·MAD) of the
+ * relative-time logs. Shared by the tail profile and the adjusted-distribution histogram so the two
+ * can never disagree about where "slow" begins. Returns NaN for empty input.
+ */
+export function slowCutoffLog(logs) {
+  if (!logs.length) return NaN;
+  const m = median(logs), mad = median(logs.map(v => Math.abs(v - m)));
+  return Math.max(Math.log(2), m + 3 * 1.4826 * mad);
+}
+
+/**
  * Slow tail. A question is "slow" when its relative time exceeds a robust cutoff: the larger of 2× the
  * typical time and median + 3·(1.4826·MAD) on the log scale. Excess = time beyond the operation median.
  * `questionsPerRun` converts the median excess per run into solves at the overall median pace: a rough,
@@ -70,8 +81,7 @@ export function tailProfile(sessions, { worst = 5 } = {}) {
   const { events, runs, opMedian } = relativeEvents(sessions);
   if (!events.length) return { runs, observations: 0, cutoffRatio: null, slowShare: null, excessPerRun: null, questionsPerRun: null, byOp: [], worst: [] };
   const logs = events.map(x => Math.log(x.ratio));
-  const m = median(logs), mad = median(logs.map(v => Math.abs(v - m)));
-  const cutoffLog = Math.max(Math.log(2), m + 3 * 1.4826 * mad);
+  const cutoffLog = slowCutoffLog(logs);
   const slow = events.filter(x => Math.log(x.ratio) > cutoffLog).map(x => ({ ...x, excessMs: x.responseMs - x.opMedianMs }));
   const perRun = new Map(Array.from({ length: runs }, (_, i) => [i, 0]));
   for (const x of slow) perRun.set(x.run, perRun.get(x.run) + x.excessMs);

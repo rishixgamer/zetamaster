@@ -7,6 +7,7 @@ import { diagnose } from '../../../packages/analytics/src/diagnostics.js';
 import { errorTypology } from '../../../packages/analytics/src/errors.js';
 import { consistencySummary } from '../../../packages/analytics/src/consistency.js';
 import { paceProfile, tailProfile } from '../../../packages/analytics/src/fatigue.js';
+import { relativeHistogram } from '../../../packages/analytics/src/histogram.js';
 import { entryQuality, MIN_TYPE_SAMPLES } from '../../../packages/analytics/src/entry-quality.js';
 import { buildHeatmap, slowestCells, MIN_CELL_SAMPLES } from '../../../packages/analytics/src/heatmap.js';
 import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, cellDrill } from '../../../packages/training/src/drills.js';
@@ -232,9 +233,21 @@ function renderConsistency(){
 const pct=r=>`${r>=1?'+':'−'}${Math.round(Math.abs(r-1)*100)}%`;
 const FOREST=[0.6,1.6];
 const forestPos=r=>(100*(Math.log(Math.min(FOREST[1],Math.max(FOREST[0],r)))-Math.log(FOREST[0]))/(Math.log(FOREST[1])-Math.log(FOREST[0]))).toFixed(2);
+/** Histogram section (F41): mixes only module-provided numbers and fixed labels; bars reuse .bar. */
+function histogramSection(hist){
+  const head=`<h3 class="subhead">Adjusted solve-time distribution across runs</h3>`;
+  if(hist.insufficient)return `${head}<p class="secondary">Insufficient: the histogram needs at least ${hist.minObs} adjusted solves and ${hist.observations} analyzed${hist.runs?` across ${hist.runs} standard run${hist.runs===1?'':'s'}`:''}. All bins stay gated until that minimum, whatever their shape.</p>`;
+  const max=Math.max(...hist.bins.map(b=>b.count));
+  const rows=hist.bins.map(b=>`<tr${b.tail?' class="hist-tail"':''}><th scope="row">${esc(b.label)}</th><td><div class="bar" aria-hidden="true"><div style="width:${max?(100*b.count/max).toFixed(2):0}%"></div></div></td><td>${b.count} <span class="muted">· ${(100*b.share).toFixed(1)}%</span></td></tr>`).join('');
+  const t=hist.tailTrend;
+  const movement=t?`<p class="secondary">Tail movement (share of solves ≥×2 per run): ${signed(t.slope*100)}<small> pp/run</small> · 95% CI ${signed(t.low*100)} to ${signed(t.high*100)} · last ${t.n} runs · Theil–Sen, needs ≥6 runs.</p>`:'';
+  const tailPct=`${(100*hist.tailShare).toFixed(1)}% (${Math.round(hist.tailShare*hist.observations)}/${hist.observations})`;
+  const cutNote=hist.tailShare===hist.slowShare?'also matches the slow-question share above, because the robust cutoff sits exactly at ×2':hist.cutoffOnEdge?'a little larger than the slow-question share above when solves land exactly on the ×2 edge — the bins count them, the strict slow rule does not':'smaller than this share when the robust slow-question cutoff moves past ×2, which the tiles above report';
+  return `${head}<table class="mini-table hist-table" aria-label="Histogram of operation-adjusted relative solve times pooled across standard runs"><thead><tr><th scope="col">Bin</th><th scope="col">Share of solves</th><th scope="col">Solves</th></tr></thead><tbody>${rows}</tbody></table>${movement}<p class="small muted">Fixed bins: below ×0.5, ×0.5–0.75, ×0.75–1, ×1–1.5, ×1.5–2, ×2–3, ≥×3; each ratio lands in the bin whose lower edge it reaches. Bars scale to the largest bin; every row shows its exact count and share. Solves at least twice your typical operation time (tail, orange): ${esc(tailPct)}, ${esc(cutNote)}.${hist.engine1?` ${hist.engine1} solves from old engine-1 records use an estimated start time.`:''} Definitions and edge rules: docs/FATIGUE.md.</p>`;
+}
 function renderPace(){
   const root=$('#pace-root'); if(!root)return;
-  const pace=paceProfile(sessions), tail=tailProfile(sessions), h=pace.halfShift;
+  const pace=paceProfile(sessions), tail=tailProfile(sessions), hist=relativeHistogram(sessions), h=pace.halfShift;
   const tile=(label,value,note)=>`<div class="metric"><span>${label}</span><strong>${value}</strong><small class="tile-note">${note}</small></div>`;
   const head=`<div class="section-header"><div><div class="eyebrow">PACE · STANDARD BENCHMARKS ONLY</div><h2 class="section-title" id="pace-title">Pace through the run &amp; slow questions</h2></div></div>`;
   if(pace.runs<3||!pace.observations){root.innerHTML=`${head}<p class="secondary">Needs at least 3 standard benchmarks (you have ${pace.runs}). Each solve time is compared with your typical time for that operation, so a run that happened to get harder problems late doesn't look like fatigue.</p>`;return;}
@@ -255,6 +268,7 @@ function renderPace(){
       <div><h3 class="subhead">Tail by operation</h3><table class="mini-table"><thead><tr><th scope="col">Operation</th><th scope="col">Median</th><th scope="col">90th pct.</th><th scope="col">90th ÷ median</th><th scope="col">Slow</th></tr></thead><tbody>${tail.byOp.map(o=>`<tr><th scope="row">${opNames[o.op]}</th><td>${fmt(o.p50)}</td><td>${fmt(o.p90)}</td><td>×${o.tailRatio.toFixed(2)}</td><td>${o.slow} <span class="muted">/ ${o.n}</span></td></tr>`).join('')}</tbody></table></div>
       <div><h3 class="subhead">Costliest stalls</h3>${tail.worst.length?`<table class="mini-table"><thead><tr><th scope="col">Problem</th><th scope="col">Took</th><th scope="col">Typical</th><th scope="col">Run</th></tr></thead><tbody>${tail.worst.map(w=>`<tr><th scope="row">${esc(w.label)}</th><td>${fmt(w.responseMs)}</td><td>${fmt(w.opMedianMs)}</td><td>${w.run}</td></tr>`).join('')}</tbody></table>`:'<p class="secondary">No slow questions by this rule.</p>'}</div>
     </div>
+    ${histogramSection(hist)}
     <p class="small muted">"Slow" means over the larger of 2× your typical time and a robust outlier cutoff (median + 3 MADs on the log scale). Time lost is the median per run of the time beyond typical spent on slow questions. Definitions: docs/FATIGUE.md.</p>`;
 }
 const OP_GLYPH={add:'+',sub:'–',mul:'×',div:'÷'};
