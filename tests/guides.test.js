@@ -53,6 +53,25 @@ const RECOMPUTERS = {
   'multiply-five': a => [a * 10, a * 5],
   'multiply-eleven': a => [a * 10, a * 11],
   'multiply-halve': (a, b) => [a * 4, b / 4, a * b],
+  // Division recomputers work on (dividend, divisor); every intermediate is exact integer math.
+  'divide-inverse': (a, b) => {
+    const t = a / b, p = t + (10 - (t % 10));
+    return [b * p, b * p - a, (b * p - a) / b, t];
+  },
+  'divide-factor': (a, b) => {
+    const prime = [2, 3, 5, 7, 11].find(p => b % p === 0);
+    let k = 0, rest = b;
+    while (rest % prime === 0) { rest /= prime; k++; }
+    const answers = [];
+    let cur = a;
+    for (let i = 0; i < k; i++) { answers.push(cur / prime); cur /= prime; }
+    if (rest > 1) answers.push(cur / rest);
+    return answers;
+  },
+  'divide-estimate': (a, b) => {
+    const t = a / b, est = Math.round(t / 10) * 10, gap = b * est - a, size = Math.abs(gap);
+    return [b * est, size, size / b, t];
+  },
 };
 
 /** The transfer domain per technique, written independently of the module — every draw must satisfy it. */
@@ -66,16 +85,30 @@ const DRAW_DOMAINS = {
   'multiply-five': d => d.a >= 2 && d.a <= 99 && d.b === 5,
   'multiply-eleven': d => d.a >= 2 && d.a <= 99 && d.b === 11,
   'multiply-halve': d => d.a === 25 && d.b >= 8 && d.b <= 100 && d.b % 4 === 0,
+  // Division draws land inside the benchmark space: divisor (drawn second, .b) 2–12 and
+  // quotient 2–99 or 2–100 (drawn first, .a); quotient-domain inequalities mirror each technique.
+  'divide-inverse': d => {
+    const q = d.a / d.b;
+    return d.b >= 2 && d.b <= 12 && Number.isInteger(q) && q >= 2 && q <= 99 && q % 10 !== 0;
+  },
+  'divide-factor': d => {
+    const q = d.a / d.b;
+    return d.b >= 2 && d.b <= 12 && Number.isInteger(q) && q >= 2 && q <= 100;
+  },
+  'divide-estimate': d => {
+    const q = d.a / d.b;
+    return d.b >= 2 && d.b <= 12 && Number.isInteger(q) && q >= 2 && q <= 99 && q % 10 !== 0;
+  },
 };
 
-const COVERED = LESSONS.filter(l => l.operation !== 'div');
+const COVERED = LESSONS;
 
-test('the guide covers exactly the non-division lessons, division cards stay display-only', () => {
+test('the guide covers every Academy card, including division', () => {
   assert.deepEqual(GUIDE_LESSON_IDS, COVERED.map(l => l.id));
-  assert.equal(COVERED.length, 9);
+  assert.equal(COVERED.length, 12);
   assert.deepEqual(
     COVERED.map(l => l.operation),
-    ['add', 'add', 'sub', 'sub', 'mul', 'mul', 'mul', 'mul', 'mul'],
+    ['add', 'add', 'sub', 'sub', 'mul', 'mul', 'mul', 'mul', 'mul', 'div', 'div', 'div'],
   );
 });
 
@@ -123,16 +156,24 @@ test('out-of-domain and malformed operands return null instead of a wrong plan',
     ['multiply-halve', 26, 48],     // anchor card keeps ×25 exactly
     ['multiply-halve', 25, 50],     // other factor must stay a multiple of 4
     ['multiply-halve', 25, 4],      // below the draw's 8 floor
+    ['divide-inverse', 280, 7],     // quotient 40 is its own next ten — no overshoot to pay back
+    ['divide-inverse', 672, 96],    // 96 is a dividend-band operand, not a 2–12 divisor
+    ['divide-inverse', 30, 7],      // quotient must be at least 2
+    ['divide-factor', 290, 8],      // dividend is not divisor × quotient (integral check fails)
+    ['divide-factor', 288, 96],     // swapped operands are rejected, never mis-planned
+    ['divide-factor', 288, 13],     // divisor outside the 2–12 table factor axis
+    ['divide-estimate', 590, 9],    // quotient 65.55… is not a benchmark question
+    ['divide-estimate', 540, 9],    // quotient 60 ends in 0 — already its own ten-estimate
+    ['divide-estimate', 594, 99],   // divisor outside the 2–12 table factor axis
     ['addition-round', 2.5, 47],    // non-integer operands
     ['addition-round', Number.NaN, 47],
   ];
   for (const [id, a, b] of cases) assert.equal(planForLesson(id, a, b), null, `${id} (${a}, ${b})`);
 });
 
-test('division lessons and unknown ids return null from every guide entry point', () => {
-  for (const id of ['divide-inverse', 'divide-factor', 'divide-estimate', 'no-such-lesson', '']) {
+test('unknown ids return null from every guide entry point', () => {
+  for (const id of ['no-such-lesson', '']) {
     assert.equal(planForLesson(id, 10, 5), null, `planForLesson ${JSON.stringify(id)}`);
-    assert.equal(askPlan(null, 'guided'), null);
     assert.equal(drawTransfer(id, 100), null, `drawTransfer ${JSON.stringify(id)}`);
     assert.equal(transferPlan(id, 100), null, `transferPlan ${JSON.stringify(id)}`);
     assert.equal(guideDrillTarget(id, 10, 5), null, `guideDrillTarget ${JSON.stringify(id)}`);
@@ -211,6 +252,9 @@ test('guideDrillTarget lands on the shared taxonomy cell of the actually-practic
     'multiply-distribute': ['mul:5:4', 'table factor 7 → row 5, 48 → col 4'],
     'multiply-five': ['mul:3:8', 'table factor 5 → row 3, 86 → col 8'],
     'multiply-eleven': ['mul:9:4', 'table factor 11 → row 9, 43 → col 4'],
+    'divide-inverse': ['div:5:9', 'divisor 7 → row 5, quotient 96 → col 9'],
+    'divide-factor': ['div:6:3', 'divisor 8 → row 6, quotient 36 → col 3'],
+    'divide-estimate': ['div:7:6', 'divisor 9 → row 7, quotient 66 → col 6'],
   };
   for (const [id, [expectedId, note]] of Object.entries(pinned)) {
     const { a, b } = parseExample(LESSONS.find(l => l.id === id).example);

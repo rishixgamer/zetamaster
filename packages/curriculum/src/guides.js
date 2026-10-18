@@ -19,21 +19,24 @@
  *
  * Transfer (`drawTransfer`) draws *unseen* operand pairs for the same technique from a seeded RNG
  * (`core/rng.js`), inside a hand-chosen domain per technique (e.g. complements keep the 100 target,
- * the double-and-halve card keeps the 25 anchor). Transfer problems are verified by the same plan
- * code plus independent recomputation in tests. Guides hand off to the existing practice surface
- * through `guideDrillTarget` (the F17/F09 cell of the practiced operands) — no new persistence, no
- * score surface, and no claim that lessons lift benchmark scores (that measurement is F21/F22).
+ * the double-and-halve card keeps the 25 anchor, division stays inside the benchmark
+ * divisor × quotient space). Transfer problems are verified by the same plan code plus independent
+ * recomputation in tests. Guides hand off to the existing practice surface through
+ * `guideDrillTarget` (the F17/F09 cell of the practiced operands) — no new persistence, no score
+ * surface, and no claim that lessons lift benchmark scores (that measurement is F21/F22).
  */
 import { matchesAnswer } from '../../core/src/session.js';
 import { createRng, intBetween } from '../../core/src/rng.js';
 import { skillCellFor } from '../../training/src/skills.js';
 import { LESSONS } from './lessons.js';
 
-/** Lesson ids covered by this slice: F23 (addition), F24 (subtraction), F25 (multiplication). */
+/** Lesson ids covered by this module: F23 (addition), F24 (subtraction), F25 (multiplication)
+ * and — since the M3 close-out — F26 (division). Every Academy card now rehearses. */
 export const GUIDE_LESSON_IDS = [
   'addition-round', 'addition-left',
   'subtraction-round', 'subtraction-complement',
   'multiply-nine', 'multiply-distribute', 'multiply-five', 'multiply-eleven', 'multiply-halve',
+  'divide-inverse', 'divide-factor', 'divide-estimate',
 ];
 
 export const GLYPH = Object.freeze({ add: '+', sub: '−', mul: '×', div: '÷' });
@@ -187,6 +190,104 @@ const TECHNIQUES = {
      */
     cellArgs: (a, b) => [a, b],
   },
+  /**
+   * Division techniques (F26, M3 close-out). A benchmark division question is generated from
+   * divisor d (2–12, the table factor) and quotient t (2–100): the displayed problem is d·t ÷ d,
+   * and these plans decompose it into computable steps. Plan arguments follow the display order:
+   * plan.a = the dividend, plan.b = the divisor; `cellArgs` maps back to the taxonomy's
+   * source-operand order (divisor first, then the quotient). Every intermediate here is exact
+   * integer arithmetic — the plans refuse anything they cannot compute exactly.
+   */
+  /**
+   * Reverse multiplication: overshoot the quotient to the next ten, pay back in table-factor steps.
+   * The residual dividend (d·p − d·t = d·(p−t)) is always divisible by d, so the payback
+   * "residual ÷ d = p − t" is exact by construction. The next-ten overshoot reproduces the card's
+   * example (t=96 → p=100); t that is itself a multiple of ten would overshoot to a degenerate
+   * zero residual, so those operands are out of domain.
+   */
+  'divide-inverse': {
+    op: 'div',
+    domain: { ok: (a, b) => b >= 2 && b <= 12 && Number.isSafeInteger(a / b) && a / b >= 2 && a / b <= 99 && (a / b) % 10 !== 0, note: 'benchmark division space (divisor 2–12 × quotient 2–99); quotient keeps a unit digit' },
+    draw: rng => {
+      const d = intBetween(rng, 2, 12);
+      let t = intBetween(rng, 2, 98);
+      if (t % 10 === 0) t += 1;
+      return { a: d * t, b: d };
+    },
+    plan: (a, b) => {
+      const t = a / b;
+      const p = t + (10 - (t % 10));            // next ten above the quotient
+      const residual = b * p - a;               // = b·(p − t), always a multiple of b
+      const payback = residual / b;             // = p − t
+      return [
+        [`${b} × ${p}`, b * p],
+        [`${b * p} − ${a}`, residual],
+        [`${residual} ÷ ${b}`, payback],
+        [`${p} − ${payback}`, t],
+      ];
+    },
+    cellArgs: (a, b) => [b, a / b],             // divisor rides first, like the generator's div source
+  },
+  /**
+   * Factor the divisor: peel the divisor into its smallest prime factor p (with multiplicity k)
+   * and whatever remains (m), then divide by p k times in a row and finish with the rest. For
+   * 288 ÷ 8 that is 8 = 2·2·2 — divide by 2 three times, exactly the card's teaching line. Every
+   * intermediate is an integer by construction (a = d·t carries the same prime factors as d).
+   * Prime divisors degenerate to the single direct division, which the explanation notes.
+   */
+  'divide-factor': {
+    op: 'div',
+    domain: { ok: (a, b) => b >= 2 && b <= 12 && Number.isSafeInteger(a / b) && a / b >= 2 && a / b <= 100, note: 'benchmark division space (divisor 2–12 × quotient 2–100)' },
+    draw: rng => {
+      const d = intBetween(rng, 2, 12);
+      return { a: d * intBetween(rng, 2, 100), b: d };
+    },
+    plan: (a, b) => {
+      // Smallest prime factor and its multiplicity: divisors 2–12 cover 2, 3, 5, 7, 11 only.
+      const prime = [2, 3, 5, 7, 11].find(p => b % p === 0);
+      let k = 0, rest = b;
+      while (rest % prime === 0) { rest /= prime; k++; }
+      const steps = [];
+      let current = a;
+      for (let i = 0; i < k; i++) {
+        steps.push([`${current} ÷ ${prime}`, current / prime]);
+        current /= prime;
+      }
+      if (rest > 1) steps.push([`${current} ÷ ${rest}`, current / rest]);
+      return steps;
+    },
+    cellArgs: (a, b) => [b, a / b],
+  },
+  /**
+   * Estimate and adjust: round the quotient to its nearest ten (ties round up), multiply the
+   * divisor by that estimate, and pay back the difference — subtracting the residual when the
+   * estimate overshot, adding the shortfall when it undershot. The nearest-ten estimate reproduces
+   * the card's example (66 → 70, overshoot); unlike `divide-inverse` the compensation can run in
+   * either direction, which is the pedagogical distinction between the two cards.
+   */
+  'divide-estimate': {
+    op: 'div',
+    domain: { ok: (a, b) => b >= 2 && b <= 12 && Number.isSafeInteger(a / b) && a / b >= 2 && a / b <= 99 && (a / b) % 10 !== 0, note: 'benchmark division space; a quotient ending in 0 is already its own ten-estimate' },
+    draw: rng => {
+      const d = intBetween(rng, 2, 12);
+      let t = intBetween(rng, 2, 98);
+      if (t % 10 === 0) t += 1;
+      return { a: d * t, b: d };
+    },
+    plan: (a, b) => {
+      const t = a / b;
+      const est = Math.round(t / 10) * 10;      // nearest ten, ties up
+      const gap = b * est - a;                  // signed: > 0 estimate overshot, < 0 undershot
+      const size = Math.abs(gap);
+      return [
+        [`${b} × ${est}`, b * est],
+        [gap > 0 ? `${b * est} − ${a}` : `${a} − ${b * est}`, size],
+        [`${size} ÷ ${b}`, size / b],
+        [gap > 0 ? `${est} − ${size / b}` : `${est} + ${size / b}`, t],
+      ];
+    },
+    cellArgs: (a, b) => [b, a / b],
+  },
 };
 
 /** Parsed, validated technique plans. `planForLesson` returns null unusable input — never throws on domain misses. */
@@ -230,8 +331,8 @@ export function checkGuideAnswer(input, answer) { return matchesAnswer(input, an
 
 /**
  * Deterministic transfer draw for a technique's domain. Same seed → same problem; the seed travels
- * with the shown problem so any helper (or a later session) can replay it. Out-of-coverage lesson
- * ids (division techniques, unknown) return null — they stay display-only teaching cards.
+ * with the shown problem so any helper (or a later session) can replay it. No technique is left
+ * without a draw since the M3 close-out: all twelve Academy cards plan and transfer.
  */
 export function drawTransfer(lessonId, seed) {
   const technique = TECHNIQUES[lessonId];
@@ -240,7 +341,7 @@ export function drawTransfer(lessonId, seed) {
   return technique.draw(rng);
 }
 
-/** Deterministic plan for a transfer draw; null only for uncovered lesson ids (see above). */
+/** Deterministic plan for a transfer draw; null only for unknown lesson ids (see above). */
 export function transferPlan(lessonId, seed) {
   const drawn = drawTransfer(lessonId, seed);
   return drawn ? planForLesson(lessonId, drawn.a, drawn.b) : null;
@@ -250,10 +351,10 @@ export function transferPlan(lessonId, seed) {
  * Practice hand-off seam: the operand cell in the shared F09/F17 taxonomy that matches a practiced
  * problem, ready for the existing 60-second pattern drill launch. Cell axes follow the generator's
  * source-operand order per technique (`cellArgs`) — for subtraction the (subtrahend, difference)
- * pair, for multiplication the table factor first — so a hand-off drill is exactly the practiced
- * pattern, never the composite display operands. Out-of-taxonomy problems return null: division
- * lessons (F26) and the fixed-25 halve card, whose operand pair never occurs in the benchmark
- * space, stay guide-only here like everywhere else.
+ * pair, for multiplication the table factor first, for division the divisor first and the quotient
+ * second — so a hand-off drill is exactly the practiced pattern, never the composite display
+ * operands. The only out-of-taxonomy problem is the fixed-25 halve card, whose operand pair never
+ * occurs in the benchmark space; it stays guide-only here like everywhere else.
  */
 export function guideDrillTarget(lessonId, a, b) {
   const plan = planForLesson(lessonId, a, b);
