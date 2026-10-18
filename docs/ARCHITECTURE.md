@@ -38,7 +38,7 @@ User practice / retest / progress
 
 ### Training
 
-`chooseAdaptive(sessions)` returns rules and operation weights, keeping its training mode separate. The versioned skill taxonomy (`packages/training/src/skills.js`, version frozen in `SKILL_TAXONOMY_VERSION`) maps every benchmark question to a stable skill cell that *reuses the heatmap banding* — ids equal the heatmap cell keys (`docs/SKILLS.md`), and `skillRollups` computes per-skill metrics by calling `buildHeatmap` so the two surfaces share one implementation. `patternDrill(cell, seconds)` (F17) derives a custom practice ruleset narrowed to one cell; `weakestSkillCell` is the planner's deterministic selection heuristic. `scheduleReview` and `skillReviewRecord` are pure primitives, **not integrated product features**; per-skill review records are persisted by `packages/storage`. Add versioned policy IDs when comparing future learning algorithms. Drill selections are descriptive; nothing here is calibrated evidence of improvement.
+`chooseAdaptive(sessions)` returns rules and operation weights, keeping its training mode separate. The versioned skill taxonomy (`packages/training/src/skills.js`, version frozen in `SKILL_TAXONOMY_VERSION`) maps every benchmark question to a stable skill cell that *reuses the heatmap banding* — ids equal the heatmap cell keys (`docs/SKILLS.md`), and `skillRollups` computes per-skill metrics by calling `buildHeatmap` so the two surfaces share one implementation. `skillCellFromId` rebuilds a cell from any stored id against the current taxonomy. `patternDrill(cell, seconds)` (F17) derives a custom practice ruleset narrowed to one cell; the heatmap cell detail and the due-review queue launch it (`startGame({drill})`, mode `drill`), and `weakestSkillCell` is the planner's deterministic selection heuristic. `packages/training/src/reviews.js` is the drill-end review semantics: `drillReviewOutcome(events, {endedEarly})` returns `null` (no record — interrupted or under-`SKILL_REVIEW_MIN_SOLVES` runs) or `{wasFastAndCorrect, solveCount, medianMs, fastMs}` where success is the nearest-rank median of the run's in-cell solves at or under `SKILL_REVIEW_FAST_MS` (the F20 `AUTOMATICITY_MS` constant, imported — one definition of "automatic recall"). The UI records one review per *completed* pattern drill via `recordSkillReview`; `scheduleReview` and `skillReviewRecord` remain the pure primitives behind that call. Add versioned policy IDs when comparing future learning algorithms. Drill and review choices are descriptive scheduling heuristics; nothing here is calibrated evidence of improvement, and review outcomes measure speed only because the engine does not persist wrong attempts.
 
 ### Curriculum
 
@@ -59,7 +59,7 @@ Quant drills and historical trading interview formats **never** reuse `zetamac-d
   id: string,
   startedAt: ISO8601,
   finishedAt: ISO8601,
-  mode: 'benchmark' | 'adaptive' | 'custom' | 'isolation' | 'sprint' | 'endurance' | 'replay',
+  mode: 'benchmark' | 'adaptive' | 'custom' | 'isolation' | 'sprint' | 'endurance' | 'replay' | 'drill',
   seed: string,
   rules: RulesSnapshot,
   benchmark: boolean,

@@ -9,7 +9,7 @@ export function dailyPlan(sessions, minutes=15) {
   // deliberate training-time choice (practice attempts are legitimate signals for *choosing*
   // practice); progress summaries stay benchmark-scoped separately (docs/SKILLS.md).
   const weak=weakestSkillCell(sessions,{ scope:'all', minSamples:SKILL_MIN_SAMPLES });
-  const pattern=weak?` Slowest recorded pattern so far: ${weak.label} — ×${weak.ratio.toFixed(2)} vs your ${weak.op} median over ${weak.count} solves (small samples, descriptive only; a pattern review step will arrive with the review queue).`:'';
+  const pattern=weak?` Slowest recorded pattern so far: ${weak.label} — ×${weak.ratio.toFixed(2)} vs your ${weak.op} median over ${weak.count} solves (small samples, descriptive only). Drill it from a heatmap cell or the due pattern reviews panel; each finished drill schedules the next repetition.`:'';
   return { targetMinutes:minutes, rationale:adaptive.explanation+pattern, steps:[
     {title:'Recall warm-up',minutes:2,mode:'isolation',operation:'mul'},
     {title:`Targeted ${adaptive.primary} practice`,minutes:5,mode:'adaptive'},

@@ -55,6 +55,28 @@ const indexIn = (axis, value) => {
 const GLYPH = Object.freeze({ add: '+', sub: '–', mul: '×', div: '÷' });
 const glyphOf = op => GLYPH[op] ?? op;
 
+/**
+ * Reconstruct a skill cell from its stored id (a review record id or `session.drill.cell`), against
+ * the CURRENT taxonomy: labels/ranges come from `heatmapLayout` so they stay authoritative with the
+ * taxonomy itself. Returns null for anything the current taxonomy does not name (unknown op,
+ * out-of-range row/col, malformed string) — stale-version records are hidden from the UI, never
+ * reinterpreted. `skillCellFor(...).id === skillCellFromId(that id).id` holds for every cell in
+ * tests/skills.test.js and tests/reviews.test.js.
+ */
+export function skillCellFromId(id) {
+  if (typeof id !== 'string') return null;
+  const match = /^([a-z]+):(\d+):(\d+)$/.exec(id);
+  if (!match || !OPERATIONS.includes(match[1])) return null;
+  const op = match[1], layout = heatmapLayout(op);
+  const row = Number(match[2]), col = Number(match[3]);
+  if (row >= layout.rows.length || col >= layout.cols.length) return null;
+  return {
+    op, row, col, id,
+    label: `${layout.rows[row].label} ${glyphOf(op)} ${layout.cols[col].label}`,
+    rowRange: [...layout.rows[row].range], colRange: [...layout.cols[col].range],
+  };
+}
+
 /** Skill id for one solved/attempted question's *source* operands. Never falls back to left/right:
  * for sub/div those are the composite question text, which would land in the wrong cell. */
 export function skillOf(event) {

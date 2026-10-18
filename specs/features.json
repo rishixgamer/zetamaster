@@ -205,10 +205,10 @@
       "id": "F17",
       "area": "Adaptive",
       "title": "Intelligent drill generation",
-      "status": "partial",
+      "status": "implemented",
       "owner": "training",
       "acceptance": [
-        "Skill-cell drill rules are generated from the taxonomy (patternDrill extends cellDrill) with pinned operand ranges, own id/label and an honest explanation; the daily plan surfaces the weakest stable pattern when its data exists; UI launch point and efficacy evaluation (F21/F22) still missing"
+        "Skill-cell drills launch from the heatmap cell detail and the due-review queue (Train tab) and run as mode 'drill' with pinned operand ranges, id 'pattern-drill' and an honest explanation; results never upgrade to benchmark (benchmarkEquivalent false, pinned); daily plan surfaces the weakest stable pattern when its data exists; multi-pattern mix, difficulty adaptation (F18) and efficacy evaluation (F21/F22) are explicitly not part of this feature"
       ],
       "dependencies": [],
       "benchmarkSafe": true
@@ -229,10 +229,10 @@
       "id": "F19",
       "area": "Adaptive",
       "title": "Spaced repetition",
-      "status": "partial",
+      "status": "implemented",
       "owner": "training",
       "acceptance": [
-        "Pure scheduling primitive is deterministic with explicit now; per-skill review records persist in IndexedDB schema v2 (additive store) with capped localStorage fallback, sanitized/versioned imports and v2 export bundle; the review queue still has no UI surface — records exist but nothing prompts practice from nextReviewAt"
+        "Pure scheduling primitive is deterministic with explicit now; per-skill review records persist in IndexedDB schema v2 (additive store) with capped localStorage fallback, sanitized/versioned imports and v2 export bundle; every completed pattern drill records one review (interrupted or under-3-solve runs record nothing) whose success rule is at least half the run's in-cell solves at or under the shared AUTOMATICITY_MS 2000 line (nearest-rank median, pinned edge by edge); a due-review queue on the Train tab prompts at-or-overdue records and launches their cells; review outcomes measure speed only (the engine does not persist wrong attempts) and the 1-60 day ladder is a heuristic, not a validated model"
       ],
       "dependencies": [],
       "benchmarkSafe": true

@@ -50,3 +50,12 @@
 tr.hist-tail .bar>div{background:#d95926}
 
 @media (max-width:820px){.pace-tiles{grid-template-columns:1fr}.forest-row{grid-template-columns:64px minmax(0,1fr)}.forest-val{grid-column:2;font-size:12px}.forest-axis>span:last-child{display:none}}
+
+/* Due pattern reviews (F19): rows reuse the app's label/meta/button rhythm; the panel spans the
+   full width of the two-column idle grid */
+.content-grid>.review-panel{grid-column:1/-1}
+.review-list,.review-upcoming{min-width:0}
+.review-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--border);font-size:13px;flex-wrap:wrap}
+.review-row .review-label{font-weight:650}
+.review-row .review-meta{color:var(--muted);font-size:12px}
+.review-row .secondary-btn{min-height:38px;padding:6px 13px;font-size:12px;margin-left:auto}

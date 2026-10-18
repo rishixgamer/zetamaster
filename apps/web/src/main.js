@@ -10,13 +10,15 @@ import { paceProfile, tailProfile } from '../../../packages/analytics/src/fatigu
 import { relativeHistogram } from '../../../packages/analytics/src/histogram.js';
 import { entryQuality, MIN_TYPE_SAMPLES } from '../../../packages/analytics/src/entry-quality.js';
 import { buildHeatmap, slowestCells, MIN_CELL_SAMPLES } from '../../../packages/analytics/src/heatmap.js';
-import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, cellDrill } from '../../../packages/training/src/drills.js';
+import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, patternDrill } from '../../../packages/training/src/drills.js';
+import { skillOf, skillCellFromId } from '../../../packages/training/src/skills.js';
+import { drillReviewOutcome, reviewQueue, SKILL_REVIEW_MIN_SOLVES, SKILL_REVIEW_FAST_MS } from '../../../packages/training/src/reviews.js';
 import { scoreChartSvg, chartLayout, nearestIndex, CHART } from './score-chart.js';
 import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { LESSONS } from '../../../packages/curriculum/src/lessons.js';
 import { suggestLesson } from '../../../packages/curriculum/src/explanations.js';
-import { listSessions, saveSession, deleteAllSessions, importSessions, importSkillReviews, listSkillReviews } from '../../../packages/storage/src/db.js';
+import { listSessions, saveSession, deleteAllSessions, importSessions, importSkillReviews, listSkillReviews, recordSkillReview } from '../../../packages/storage/src/db.js';
 import { downloadJson, downloadCsv, exportBundle, parseExportBundle } from '../../../packages/storage/src/export.js';
 
 const $ = selector => document.querySelector(selector);
@@ -27,6 +29,8 @@ const opNames={add:'Addition',sub:'Subtraction',mul:'Multiplication',div:'Divisi
 const durationFormat = ms => { const seconds=Math.ceil(Math.max(0,ms)/1000);return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`; };
 const getOps=()=>$$('#ops input:checked').map(x=>x.value);
 let sessions=[];
+let skillReviews=[];   // persisted per-skill spaced-repetition records (F19)
+let drillReview=null;  // the spaced-review outcome of the drill that just finished, for the results panel
 let currentSession=null;
 let tick=null;
 const MAX_FIELD=24;
@@ -39,6 +43,7 @@ let lastResult=null;
 
 async function refresh() {
   sessions=await listSessions();
+  skillReviews=await listSkillReviews().catch(()=>[]);
   const p=benchmarkProgress(sessions);
   const values=[p.personalBest??'—',p.recentMedian??'—',p.count,'70+'];
   $$('#top-metrics .metric strong').forEach((el,i)=>el.textContent=values[i]);
@@ -46,6 +51,31 @@ async function refresh() {
   $('#plan-rationale').textContent=plan.rationale;
   $('#plan-steps').innerHTML=plan.steps.map((x,i)=>`<div class="step"><span class="step-num">${i+1}</span><span class="step-title">${esc(x.title)}</span><span class="step-time">${x.minutes} min</span></div>`).join('');
   renderAnalytics();
+  renderReviewQueue();
+}
+
+// Due pattern reviews (F19): the queue reads persisted nextReviewAt records and launches a
+// cell-limited pattern drill. Due = next review at or before now. Records only appear after drill
+// runs or imports, so a new account sees an honest empty state, not fabricated homework.
+function reviewRow(item,dueText,launch){
+  return `<div class="review-row"><span class="review-label">${esc(item.label)}</span><span class="review-meta">${esc(dueText)}</span>${launch?`<button type="button" class="secondary-btn" data-review-launch="${esc(item.id)}">Practice 60s <span aria-hidden="true">↗</span></button>`:''}</div>`;
+}
+function renderReviewQueue(){
+  const root=$('#review-panel'); if(!root)return;
+  const now=Date.now();
+  const q=reviewQueue(skillReviews,now);
+  const dueAt=nextMs=>`due now · ${Math.max(1,Math.round((now-nextMs)/86400000))} day(s) overdue`;
+  const rows=q.due.map(item=>reviewRow(item,`${dueAt(item.nextMs)} · streak ${item.record.successes} · lapses ${item.record.failures} · every ${item.record.intervalDays} d`,true)).join('');
+  const upcoming=q.upcoming.length?`<h3 class="subhead">Next up</h3>${q.upcoming.map(item=>reviewRow(item,`in ${Math.max(1,Math.ceil((item.nextMs-now)/86400000))} d · every ${item.record.intervalDays} d`,false)).join('')}`:'';
+  root.innerHTML=`<div class="section-header"><div><div class="eyebrow">SPACED REVIEW · PATTERN DRILLS ONLY</div><h2 class="section-title">Due pattern reviews</h2></div><span class="tag">${q.due.length} DUE</span></div>
+    ${skillReviews.length?'':`<p class="secondary">No review records yet. A finished 60-second pattern drill (from a heatmap cell or the slowest-pattern hint in your plan) records one per cell; the next repetition is then spaced 1, 2, 4 … up to 60 days apart.</p>`}
+    ${rows?`<div class="review-list"><p class="secondary">These patterns are due for review: fast completion spaces them out; a slower run brings them back tomorrow.</p>${rows}</div>`:skillReviews.length?`<div class="empty">Nothing due right now. Reviews land 1, 2, 4 … 60 days after each drill.</div>`:''}
+    ${upcoming}
+    <p class="small muted">A review records speed only: the engine doesn't persist wrong attempts yet, so "success" means at least ${SKILL_REVIEW_MIN_SOLVES} finished problems and at least half of them at or under the ${fmt(SKILL_REVIEW_FAST_MS)} line. Interrupted runs record nothing. The 1–60 day spacing ladder is a heuristic, not a validated model. Definitions: docs/SKILLS.md.</p>`;
+  root.querySelectorAll('[data-review-launch]').forEach(btn=>btn.addEventListener('click',()=>{
+    const cell=skillCellFromId(btn.dataset.reviewLaunch);
+    if(cell)startGame({drill:cell});
+  }));
 }
 function setView(view) {
   $$('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+view));
@@ -81,7 +111,9 @@ function startGame({ replay=null, drill=null }={}) {
     else if(mode==='sprint')rules=sprintRules(30);
     else if(mode==='endurance')rules=enduranceRules(300);
     else if(mode==='replay')rules=customRules({durationSeconds:120});
-    else if(mode==='drill')rules=cellDrill(drill.op,drill,60);
+    // Drill and review launches both come in as skill cells: a pattern drill is a practice ruleset
+    // limited to the cell's operand ranges, ranked by `weakestSkillCell` history (F17/F19).
+    else if(mode==='drill')rules=patternDrill(drill,60);
   } catch(error){alert(error.message);return;}
   currentSeed=$('#seed').value.trim() || crypto.randomUUID();
   if(replay) {
@@ -91,7 +123,7 @@ function startGame({ replay=null, drill=null }={}) {
     generator=()=>{const q=items[cursor%items.length];cursor++;return {...q,id:`replay-${cursor}`,sequence:cursor};};
   } else generator=createGenerator(rules,currentSeed,weights);
   currentMode=mode; currentReplay=replay; currentDrill=drill;
-  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.key,label:drill.label}:null});
+  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.id??drill.key,label:drill.label}:null});
   currentSession.start();
   $('#idle-layout').classList.add('hidden');$('#top-metrics').classList.add('hidden');$('#results').classList.add('hidden');$('#game').classList.remove('hidden');
   $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':mode==='drill'?`DRILL · ${drill.label} · PRACTICE`:`${mode.toUpperCase()} PRACTICE`;
@@ -128,6 +160,10 @@ async function finishGame(endedEarly) {
   const result=currentSession.finish({endedEarly});
   if(!result || lastResult===result)return;
   lastResult=result;
+  // One review per finished drill run (F19): outcome from the run's own finish time, so the record
+  // is reproducible from stored data. Practice/benchmark namespaces stay separate — benchmarks and
+  // plain practice runs never touch the review store; drill runs are practice-scope by definition.
+  drillReview=await recordDrillReview(result);
   await saveSession(result);
   $('#game').classList.add('hidden');$('#results').classList.remove('hidden');
   $('#result-title').textContent=result.benchmark?'Standard benchmark completed':`${result.mode} session completed`;
@@ -135,8 +171,36 @@ async function finishGame(endedEarly) {
   const stats=sessionStats(result);
   const typology=errorTypology(result.events);
   const hidden=result.integrity?.hiddenMs>0?` · tab hidden ${fmt(result.integrity.hiddenMs)} (clock kept running)`:'';
-  $('#result-detail').innerHTML=`<p class="secondary">${result.events.length} solved · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}${hidden}</p>${typologyHtml(typology)}`;
+  $('#result-detail').innerHTML=`<p class="secondary">${result.events.length} solved · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}${hidden}</p>${typologyHtml(typology)}${drillReviewLine(drillReview)}`;
   await refresh();
+}
+/**
+ * The review outcome of one finished drill run, persisted. Returns null when the run was not a
+ * pattern drill, or `drillReviewOutcome` says a run had too little evidence (or was interrupted), in
+ * which case nothing is written and the results panel says so.
+ */
+async function recordDrillReview(result) {
+  const cellId=result?.drill?.cell;
+  if(!cellId)return null;
+  const label=skillCellFromId(cellId)?.label??cellId;
+  const cellEvents=(result.events??[]).filter(e=>skillOf(e)?.id===cellId);
+  const outcome=drillReviewOutcome(cellEvents,{endedEarly:result.endedEarly});
+  if(!outcome)return {label,outcome:null,solveCount:cellEvents.length,endedEarly:result.endedEarly};
+  const record=await recordSkillReview(cellId,outcome.wasFastAndCorrect,result.finishedAt);
+  return {label,outcome,...outcome,record};
+}
+/** Plain-language spacing note for the drill result panel; no claims about score gains. */
+function drillReviewLine(review) {
+  if(!review)return '';
+  if(!review.outcome){
+    const why=review.endedEarly?'run ended early — interrupted drills schedule nothing':`${review.solveCount} finished problem${review.solveCount===1?'':'s'} in the cell — a review needs at least ${SKILL_REVIEW_MIN_SOLVES}`;
+    return `<p class="small muted">No review recorded · ${esc(review.label)}: ${esc(why)}.</p>`;
+  }
+  const due=new Date(review.record.nextReviewAt).toLocaleDateString();
+  const pace=review.wasFastAndCorrect
+    ?`median ${fmt(review.medianMs)} at or under the ${fmt(review.fastMs)} line — success streak ${review.record.successes}, next review ${due}`
+    :`median ${fmt(review.medianMs)} above the ${fmt(review.fastMs)} line — streak reset, reviews again ${due}`;
+  return `<p class="small muted">Pattern review recorded · ${esc(review.label)}: ${review.solveCount} solves · ${esc(pace)}. Spacing-only heuristic; it does not measure accuracy or promise score gains.</p>`;
 }
 const ERROR_LABELS={clean:'Clean entry',revision:'Revised (deleted a correct digit)',slip:'Slip (wrong digit, fixed mid-entry)',calculation:'Calculation error (complete wrong answer first)'};
 function typologyHtml(t){
@@ -337,7 +401,7 @@ function cellDetailHtml(c,h){
   return `<h3 class="cell-title">${esc(c.label)}</h3>
     <dl class="cell-stats"><dt>Solved</dt><dd>${c.count} <span class="muted">(${esc(c.evidence)})</span></dd><dt>Median</dt><dd>${fmt(c.medianMs)}</dd><dt>95% CI of median</dt><dd>${ci}</dd><dt>Smoothed relative speed</dt><dd>${rel}</dd><dt>Not clean entry</dt><dd>${c.flawedShare===null?'—':Math.round(100*c.flawedShare)+'%'}</dd></dl>
     <button type="button" class="primary-btn" id="drill-cell">Drill ${esc(c.label)} · 60s practice ↗</button>
-    <p class="small muted">Drills only show problems from this cell and are saved as practice. They never count toward benchmark scores, and they're excluded from the benchmark-only heatmap.</p>`;
+    <p class="small muted">Drills only show problems from this cell and are saved as practice. They never count toward benchmark scores, and they're excluded from the benchmark-only heatmap. A finished 60-second drill also records a spaced review for this pattern (speed-based; see the due reviews panel on the Train tab).</p>`;
 }
 function renderHeatmap(){
   const root=$('#heatmap-root'); if(!root)return;
@@ -378,7 +442,7 @@ function renderHeatmap(){
   });
   $('#drill-cell')?.addEventListener('click',()=>{
     setView('train');showIdle();
-    startGame({drill:{op:h.op,key:selectedCell.key,label:selectedCell.label,rowRange:selectedCell.rowRange,colRange:selectedCell.colRange}});
+    startGame({drill:{op:h.op,id:selectedCell.key,label:selectedCell.label,rowRange:selectedCell.rowRange,colRange:selectedCell.colRange}});
   });
 }
 function selectCell(row,col,focus){

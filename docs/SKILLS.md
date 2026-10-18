@@ -85,7 +85,10 @@ descriptive, moderately smoothed, and not a model of what will help.
 
 The daily plan (`dailyPlan`) appends the weakest pattern to its rationale **only when a cell clears
 the sample gate**; with no skill history it degrades to the plain operation-level rationale. Drill
-selection is not prompted anywhere yet — the UI launch button is slice 2.
+launch points (M2 slice 2): the heatmap cell detail ("Drill … · 60s practice") and the due-review queue
+on the Train tab both call `patternDrill` through the session launcher; the drill runs as mode
+`drill`, stores `drill: {op, cell, label}` on its result (`cell` = the skill id), and is saved as
+practice so it can never upgrade to a benchmark.
 
 ## Persisted spaced repetition (F19)
 
@@ -125,15 +128,61 @@ primitive with the record already stored for that id.
 Import discipline matches session imports: `sanitizeImportedSkillReview` drops (but counts) records
 whose taxonomy version is not current, whose id is not a real current-taxonomy cell, whose counters
 are negative/non-integers, or whose stored `nextReviewAt` disagrees with
-`lastReviewedAt + intervalDays` (recomputed, never trusted). `parseSkillId` is the id grammar.
-Exports: `exportBundle(sessions, skillReviews)` produces
+`lastReviewedAt + intervalDays` (recomputed, never trusted). `parseSkillId` is the id grammar — it
+delegates to `skillCellFromId` (training) so the storage grammar and the UI's id→cell lookup are one
+source of truth. Exports: `exportBundle(sessions, skillReviews)` produces
 `{ schema: 'zetamaster-export-v2', exportedAt, sessions, skillReviews }`; `parseExportBundle` still
 accepts the legacy bare array. Exports remain user-initiated only.
+
+## When a review is recorded and what it means (slice 2)
+
+`packages/training/src/reviews.js` owns the semantics; `apps/web/src/main.js` applies it after every
+finished run and the UI shows the outcome in the drill result panel.
+
+- **What records:** exactly one review per *completed* pattern drill (`mode: 'drill'`), evaluated on
+  the run's own `finishedAt` (explicit clock; never a hidden `Date.now()`). Practice sessions of
+  other modes and benchmarks never record reviews. **Interrupted drills (ended early) record
+  nothing** — a review that was cut short is not evidence of a mastered pattern.
+- **Minimum evidence:** the run needs ≥ `SKILL_REVIEW_MIN_SOLVES = 3` solved problems whose
+  `skillOf(event).id` equals the drilled cell id (the event filter is the caller's job, so the
+  function has explicit inputs). Below that, no record — the results panel says so.
+- **Success rule ("wasFastAndCorrect"):** the run's usable solve times (`responseMs` finite and
+  ≥ 0; unusable entries are ignored, not counted) pass when **at least half finish at or under
+  `SKILL_REVIEW_FAST_MS = 2000 ms`** — equivalently, the *nearest-rank* median ≤ 2000 (the smallest
+  value with at least half the observations at or below it). The same 2000 ms automatization line is
+  F20 `masteryProxy`'s per-event threshold, exported from `packages/analytics/src/skill-model.js` as
+  `AUTOMATICITY_MS` and imported here, so the two features cannot drift. The nearest-rank choice is
+  pinned by tests: at exactly half-solves-inside, the run passes; an interpolated median would
+  sometimes disagree, and the reported `medianMs` is the same nearest-rank value.
+- **Outcomes:** success (`wasFastAndCorrect = true`) grows the streak and multiplies the interval
+  (1 → 2 → 4 … 60 d, lapse at a streak cap); anything slower records a lapse (streak reset,
+  interval back to 1 day). Both outcomes are records; only absence of evidence records nothing.
+- **Sample-size caveat:** the review decision rests on one run's solves (≥ 3 observations); a run
+  can pass on a lucky tail or lapse on a busy morning. The record is averaged *across* runs only
+  through the streak counters, never through a flattened median-of-medians.
+
+### Review queue (Train tab)
+
+`reviewQueue(records, nowMs, { upcomingDays = 7 })` (pure) splits stored records into:
+
+| item | definition |
+|---|---|
+| `due` | `nextReviewAt ≤ nowMs`; sorted op add→sub→mul→div, then row, then col (the `skillRollups` order) |
+| `upcoming` | `nextReviewAt in (nowMs, nowMs + upcomingDays]`; sorted by next review time, ties by cell order |
+| `skipped` | records whose id does not name a current-taxonomy cell, or whose `nextReviewAt` is unparseable — hidden and counted, never reinterpreted |
+
+Due rows launch a `patternDrill` for their cell; practicing early records that run's outcome and
+reschedules from today (the scheduler only ever sees one `now`). The panel shows streaks, lapse
+counts and the current interval per record, plus an honest empty state: records exist only after
+drill runs or imports, so a fresh profile sees no fabricated homework.
 
 ## What this slice does not claim
 
 - No evidence yet that pattern drills improve benchmark scores; that measurement (train/holdout and
   predicted-vs-observed transfer) is F21/F22.
-- F19 remains **partial**: the review queue has no UI surface yet; nothing reads `nextReviewAt` to
-  prompt user work (records are persisted and importable/exportable only).
+- Review outcomes measure **speed only**. The engine does not persist wrong attempts (the F07
+  correction-semantics follow-up), so "fast *and* correct" reduces, in practice, to the speed rule
+  above; lapses are "recall was not automatic", not "answers were wrong".
+- The 1–60 day interval ladder is a fixed heuristic, not a validated forgetting model, and the queue
+  is a prompt, not a measured intervention.
 - Rollup medians are observations, not calibrated ability estimates.

@@ -1,7 +1,6 @@
 import { benchmarkEquivalent, BENCHMARK_RULES, OPERATIONS } from '../../core/src/rulesets.js';
 import { makeQuestion } from '../../core/src/generator.js';
-import { SKILL_TAXONOMY_VERSION } from '../../training/src/skills.js';
-import { heatmapLayout } from '../../analytics/src/heatmap.js';
+import { SKILL_TAXONOMY_VERSION, skillCellFromId } from '../../training/src/skills.js';
 
 const NUMERIC_FIELDS = ['responseMs', 'firstInputMs', 'entryMs', 'corrections', 'wrongSubmissions', 'wrongPrefixes', 'fullWrongAnswers', 'inputChanges', 'completedAtMs', 'shownAtMs'];
 const MAX_EVENTS = 5000;
@@ -45,13 +44,12 @@ export function sanitizeImportedSkillReview(s) {
   };
 }
 
-/** True only for ids of the form `${op}:${row}:${col}` that name a cell of the current taxonomy. */
+/** True only for ids of the form `${op}:${row}:${col}` that name a cell of the current taxonomy.
+ * Delegates to `skillCellFromId`, so this grammar and the UI's id→cell lookup are one source of
+ * truth and cannot drift. */
 export function parseSkillId(id) {
-  const match = /^([a-z]+):(\d+):(\d+)$/.exec(id);
-  if (!match || !OPERATIONS.includes(match[1])) return null;
-  const [_, op, row, col] = match, layout = heatmapLayout(op);
-  if (Number(row) >= layout.rows.length || Number(col) >= layout.cols.length) return null;
-  return { id, op, row: Number(row), col: Number(col) };
+  const cell = skillCellFromId(id);
+  return cell === null ? null : { id: cell.id, op: cell.op, row: cell.row, col: cell.col };
 }
 
 /**
