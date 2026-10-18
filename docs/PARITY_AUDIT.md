@@ -29,6 +29,6 @@
 
 ## What this audit does not establish
 
-- That the server always serves this client: the module is versioned (`?v=2`) and may change. Re-run the audit when the query string changes.
+- That the server always serves this client: the module is versioned (`?v=2`) and may change. Re-run the audit when the query string changes. Freshness re-check 2026-10-18: the live default game (`/game?key=a7220a92`) still serves `/dist/app.js?v=2` with the same default options — no re-audit required.
 - Input-device, font, layout or browser rendering parity. Scores still depend on keyboard, latency and display.
 - Score equivalence for any individual. The claim is: **the problem distribution and answer-acceptance rule match the audited client**, with the timer deviation above.
