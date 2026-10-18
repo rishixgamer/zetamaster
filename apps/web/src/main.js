@@ -11,6 +11,7 @@ import { relativeHistogram } from '../../../packages/analytics/src/histogram.js'
 import { entryQuality, MIN_TYPE_SAMPLES } from '../../../packages/analytics/src/entry-quality.js';
 import { buildHeatmap, slowestCells, MIN_CELL_SAMPLES } from '../../../packages/analytics/src/heatmap.js';
 import { chooseAdaptive, operationDrill, sprintRules, enduranceRules, patternDrill, automaticityDrill, drillTierForRecord, DEFAULT_DRILL_TIER, DRILL_TIERS } from '../../../packages/training/src/drills.js';
+import { intervalSet, intervalSetRationale } from '../../../packages/training/src/sets.js';
 import { skillOf, skillCellFromId } from '../../../packages/training/src/skills.js';
 import { drillReviewOutcome, drillReviewEligible, reviewQueue, SKILL_REVIEW_MIN_SOLVES, SKILL_REVIEW_FAST_MS } from '../../../packages/training/src/reviews.js';
 import { gauntletPlan, gauntletLaunch, gauntletGenerator } from '../../../packages/training/src/gauntlet.js';
@@ -47,6 +48,12 @@ const heatmapState={op:'mul',scope:'benchmark',focus:{row:0,col:0},selected:null
 let currentSeed='';
 let lastPreset=null;  // last gauntlet/stage launch: "Play again" must re-launch it, not rebuild rules from a payloadless drill
 let lastResult=null;
+// Active speed-interval set (F30): practice pacing state only — never persisted, never scored.
+// `done` counts finished work bouts; `restSinceMs` marks the last work bout's end on the monotonic
+// clock for the informational recovery meter between the manual continue steps.
+let sprintSet=null;
+let setRestSinceMs=0;
+let restTicker=null;
 
 async function refresh() {
   sessions=await listSessions();
@@ -59,6 +66,7 @@ async function refresh() {
   renderAnalytics();
   renderReviewQueue();
   renderGauntlet();
+  renderIntervals();
   renderRecommendations();
 }
 
@@ -115,6 +123,65 @@ function renderGauntlet(){
     } catch(error){alert(error.message);}
   }));
   $('#gauntlet-benchmark')?.addEventListener('click',()=>{$('#mode').value='benchmark';updateMode();startGame();});
+}
+// Speed-interval sets (F30 close-out): several short work bouts — each an independent 'sprint'
+// practice run — separated by recovery pauses the user continues by hand. The rest meter is
+// informational, runs on the monotonic clock, pauses nothing and gates nothing; benchmarks are
+// untouched by construction (sprint rules can never validate as the benchmark). Every note here is
+// honest that the recovery hypothesis is untested; only the measured half-slowdown is evidence.
+const INTERVAL_SPEC = () => intervalSet();
+function stopRestTicker() { if (restTicker) { clearInterval(restTicker); restTicker = null; } }
+function startRestTicker(spec) {
+  if (restTicker) return;
+  restTicker = setInterval(() => {
+    if (!sprintSet) { stopRestTicker(); return; }
+    const meter = $('#rest-meter');
+    if (meter) meter.textContent = restMeterText(spec, performance.now());
+  }, 250);
+}
+function restMeterText(spec, nowMs) {
+  const elapsedMs = Math.max(0, nowMs - setRestSinceMs);
+  const needMs = spec.restSeconds * 1000;
+  if (elapsedMs >= needMs) return `recovered — rested ${Math.round(elapsedMs / 1000)} s, target was ${spec.restSeconds} s`;
+  return `${Math.ceil((needMs - elapsedMs) / 1000)} s of recovery left (rested ${Math.floor(elapsedMs / 1000)} s of ${spec.restSeconds} s)`;
+}
+function launchSetStage(spec, index) {
+  // Each work bout is its own practice session; the preset keeps "Play again" relaunching the
+  // same bout. The `interval-set` payload marks the result so the set advances on finish.
+  startGame({ preset: { mode: 'sprint', rules: sprintRules(spec.workSeconds), drill: { stage: 'interval-set', index } } });
+}
+function renderIntervals() {
+  const root = $('#intervals-panel'); if (!root) return;
+  const spec = INTERVAL_SPEC();
+  const rationale = intervalSetRationale(paceProfile(sessions));
+  const evidence = rationale
+    ? `Evidence link: ${esc(rationale.text)} — that slowdown is measured; running short bouts with recovery is a hypothesis about how to counter it, untested here.`
+    : `No verified split data yet (needs 3 standard benchmarks with solves in both halves): as structured practice this is a hypothesis without local evidence either way.`;
+  let body;
+  if (!sprintSet) {
+    stopRestTicker();
+    body = `<p class="secondary">${esc(spec.label)}: each sprint is a separate, always-practice run; between sprints you rest by hand and start the next one when ready. The recovery meter counts up from your last sprint using the monotonic clock — it pauses no timer and affects no benchmark. The set itself is not saved; only its sprint runs are (like all practice).</p>
+      <div class="subline"><button type="button" class="primary-btn" id="intervals-run">Run the set · ${esc(spec.label)} ↗</button></div>
+      <p class="small muted">${evidence}</p>`;
+  } else if (sprintSet.done >= spec.workStages) {
+    stopRestTicker();
+    body = `<p class="secondary">Set complete: ${spec.workStages} sprints finished. The pacing note isn't stored anywhere — the sprint runs themselves are in practice history.</p>
+      <div class="subline"><button type="button" class="primary-btn" id="intervals-run">Run another set ↗</button></div>
+      <p class="small muted">${evidence}</p>`;
+  } else {
+    startRestTicker(spec);
+    body = `<p class="secondary">Sprint ${sprintSet.done} of ${spec.workStages} done. <span id="rest-meter" role="timer" aria-live="polite">${esc(restMeterText(spec, performance.now()))}</span> Continue with sprint ${sprintSet.done + 1} whenever you feel ready — resting by hand is the point, and skipping the rest is a choice, not an error.</p>
+      <div class="subline"><button type="button" class="primary-btn" id="intervals-next">Sprint ${sprintSet.done + 1} of ${spec.workStages} ↗</button> <button type="button" class="secondary-btn" id="intervals-end">End set</button></div>
+      <p class="small muted">${evidence}</p>`;
+  }
+  root.innerHTML = `<div class="section-header"><div><div class="eyebrow">SPEED INTERVALS · SETS + RECOVERY · PRACTICE</div><h2 class="section-title">Interval set</h2></div><span class="tag">${esc(spec.label)}</span></div>${body}`;
+  $('#intervals-run')?.addEventListener('click', () => { sprintSet = { done: 0 }; setRestSinceMs = 0; launchSetStage(spec, 1); });
+  $('#intervals-next')?.addEventListener('click', () => launchSetStage(spec, sprintSet ? sprintSet.done + 1 : 1));
+  $('#intervals-end')?.addEventListener('click', () => {
+    sprintSet = null; setRestSinceMs = 0;
+    stopRestTicker();
+    renderIntervals(); refresh();
+  });
 }
 // Due pattern reviews (F19): the queue reads persisted nextReviewAt records and launches a
 // cell-limited pattern drill. Due = next review at or before now. Records only appear after drill
@@ -274,6 +341,12 @@ async function finishGame(endedEarly) {
   // is reproducible from stored data. Practice/benchmark namespaces stay separate — benchmarks and
   // plain practice runs never touch the review store; drill runs are practice-scope by definition.
   drillReview=await recordDrillReview(result);
+  // A finished interval-set work bout advances the practice set (F30): manual early ends don't
+  // count — only full-length sprint runs do. Rest meter start = the monotonic now, never Date.now.
+  if (sprintSet && result.drill?.stage === 'interval-set' && Number.isSafeInteger(result.drill.index) && result.endedEarly !== true) {
+    sprintSet.done = Math.max(sprintSet.done, result.drill.index);
+    setRestSinceMs = performance.now();
+  }
   await saveSession(result);
   $('#game').classList.add('hidden');$('#results').classList.remove('hidden');
   $('#result-title').textContent=result.benchmark?'Standard benchmark completed':`${result.mode} session completed`;
@@ -307,6 +380,7 @@ async function recordDrillReview(result) {
 /** Plain-language spacing note for the drill result panel; no claims about score gains. */
 function drillReviewLine(review) {
   if(!review)return '';
+  if(review.reason==='not-drill')return '';  // benchmarks and plain practice never had a review to record
   if(!review.outcome){
     const why=review.reason==='probe'?'a transfer probe is a measurement and never records reviews'
       :review.reason==='flash'?'automaticity drills do not drive the spaced ladder'

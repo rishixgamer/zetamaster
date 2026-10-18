@@ -194,10 +194,10 @@
    "id": "F16",
    "area": "Adaptive",
    "title": "Automatic bottleneck identification",
-   "status": "partial",
+   "status": "implemented",
    "owner": "analytics",
    "acceptance": [
-    "Operation and tag weaknesses from historical event stream with sample warnings"
+    "Automatic bottleneck identification at three granularities with sample warnings at every step: operation and tag weaknesses from the historical event stream (diagnose: shrinkage toward the global median, per-candidate count and evidence label, gated at 5 observations), operand-band skill-cell bottlenecks on the F09 heatmap banding (weakestSkillCell/skillRollups: >=3-solve gate, smoothed ratio, CI below 6 observations), and an automatic consensus surfaced by the daily-plan rationale (slowest gated pattern), the weakness gauntlet quota (weakest stable cells) and the merged recommendation list (F38); descriptive diagnosis of recorded history, not a causal or calibrated model"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -365,7 +365,7 @@
    "status": "implemented",
    "owner": "training/web",
    "acceptance": [
-    "30-second sprint preset; add sets and recovery intervals"
+    "30-second sprint preset (mode 'sprint', always practice); interval sets (packages/training/src/sets.js, F30 close-out): a named, validated composition of several short work bouts run as independent sprint practice sessions separated by manually continued recovery pauses with a monotonic informational rest meter; no engine timing change, benchmark rules untouched by construction, set pacing state deliberately not persisted; the recovery-against-fatigue link quotes the measured second-half slowdown but is stated as an untested hypothesis"
    ],
    "dependencies": [],
    "benchmarkSafe": true
