@@ -142,8 +142,9 @@ export function duelRecommendation(op, drawn) {
 /**
  * Tally helper for the UI: `attempts` are per-problem first-try results
  * `{ correct: boolean }` arrays, one arm each, aligned to the fixture's problems. Pure; returns
- * per-arm counts plus the per-problem head-to-head (both right / first right / miss), which is
- * what "matched examples" can honestly support. No significance test — n is tiny by design.
+ * per-arm counts plus the per-problem head-to-head (`per`: both right / only A / only B per
+ * problem, in fixture order), which is what "matched examples" can honestly support. No
+ * significance test — n is tiny by design.
  */
 export function duelTally(attemptsA, attemptsB) {
   const per = [];
@@ -163,6 +164,7 @@ export function duelTally(attemptsA, attemptsB) {
     both, onlyA, onlyB, neither,
     correctA: per.filter(p => p.correctA).length,
     correctB: per.filter(p => p.correctB).length,
+    per,
     note: 'Matched-problem tally only: no significance test at this sample size, and neither pass is timed.',
   };
 }

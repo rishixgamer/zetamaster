@@ -20,6 +20,8 @@ Current code: seeded generator, inverse questions, immutable benchmark config, l
 
 **Gate:** Zero benchmark contamination bugs in regression suite; output can be explained from telemetry.
 
+**Delivered since plan:** F02 (per-axis custom operand ranges, practice-only and engine-bound validated), F04 (sequence history viewer + whole-session replay as labeled practice), F05 (on-screen keypad and answer sound cues, OFF by default, telemetry-neutral) and F10 (additive harder-shape difficulty tags with hand-computed and property tests) are implemented and pinned in `tests/entry-settings.test.js`, `tests/sequence-replay.test.js`, `tests/cues.test.js`, `tests/reviews.test.js`, `tests/difficulty-tags.test.js`. Benchmark runs remain byte-policy identical: replay of them is practice, never a reusable benchmark source.
+
 ## M2 — Adaptive training v1
 
 **F16–F22, F30–F32, F34, F38.**
@@ -43,6 +45,8 @@ Current code: seeded generator, inverse questions, immutable benchmark config, l
 5. Optional LLM explanation interface behind explicit consent; deterministic evaluator remains source of truth.
 
 **Gate:** Each lesson has an explanation test, a novel-problem test and an adaptive schedule integration test.
+
+**Delivered since plan:** F23–F28 rehearse all 12 cards (division included — F26) in guided/partial/independent modes with seeded transfer and drill hand-off; F27's seeded duel compares the only two overlapping card pairs (addition, division) arm-by-arm with an honest tiny-n tally; F29 ships the consent-gated coach verifier (device-local opt-in, deterministic claim checking, no grading, no network transport). Pinned in `tests/guides.test.js`, `tests/strategies.test.js`, `tests/duel-ui.test.js`, `tests/duels.test.js`, `tests/coach.test.js`, `tests/academy-ui.test.js`. Lesson-level strategy quizzes, per-card progress ladders and an actual AI transport remain open items for this milestone.
 
 ## M4 — Performance laboratory
 

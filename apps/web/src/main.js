@@ -38,6 +38,11 @@ import { verifyBenchmarkSession } from '../../../packages/services/src/anti-chea
 import { submitLeaderboardScore, getLeaderboardRankings, readLeaderboardConsent, setLeaderboardConsent, sanitizeAlias, defaultLeaderboardStore } from '../../../packages/services/src/leaderboard.js';
 import { createQuantGenerator } from '../../../packages/quant/src/generator.js';
 import { renderQuantUI } from './quant-ui.js';
+import { renderReplayUI } from './replay-ui.js';
+import { renderDuelUI } from './duel-ui.js';
+import { renderCoachUI } from './coach-ui.js';
+import { readEntrySettings, writeEntrySettings, readCustomRanges, writeCustomRanges, customRangesFromFields, DEFAULT_ENTRY_SETTINGS } from './entry-settings.js';
+import { playCue } from './cues.js';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -69,6 +74,10 @@ let lastResult=null;
 let sprintSet=null;
 let setRestSinceMs=0;
 let restTicker=null;
+// Entry settings & feedback (F02/F05): toggles default OFF, device-local; the audio context is
+// created lazily on the first user gesture so autoplay policies are satisfied.
+let entrySettings={...DEFAULT_ENTRY_SETTINGS};
+let audioContext=null;
 
 async function refresh() {
   sessions=await listSessions();
@@ -329,7 +338,7 @@ function updateMode() {
   const hints={
     benchmark:'Strict 120-second benchmark. All operations, standard ranges, no skips or pausing. Ending early invalidates the benchmark.',
     adaptive:'Weights weaker operations more heavily, using response times from your history. Not a standardized score.',
-    custom:'Choose one or more operations and a time limit. Custom scores are separate from the benchmark.',
+    custom:'Choose one or more operations, a time limit and operand ranges (see the ranges panel below). Custom scores are separate from the benchmark.',
     isolation:'Practices the first checked operation only. Choose exactly one for clarity.',
     sprint:'30-second mixed-operation sprint. Practice score only.',
     endurance:'300-second mixed-operation endurance session. Practice score only.',
@@ -338,6 +347,9 @@ function updateMode() {
   $('#duration').disabled=['benchmark','sprint','endurance'].includes(mode);
   $('#duration').value={benchmark:'120',sprint:'30',endurance:'300'}[mode]||$('#duration').value;
   $$('#ops input').forEach(x=>x.disabled=!['custom','isolation'].includes(mode));
+  // Custom operand ranges (F02): the four inverse-generation axes are editable in custom mode only.
+  const ranges=$('#custom-ranges');
+  if(ranges){ranges.classList.toggle('hidden',mode!=='custom');ranges.open=mode==='custom';}
 }
 function startGame({ replay=null, drill=null, preset=null }={}) {
   if(currentSession?.state==='active')return;
@@ -351,7 +363,7 @@ function startGame({ replay=null, drill=null, preset=null }={}) {
     if(preset){rules=preset.rules;drill={...preset.drill};weights=null;lastPreset=preset;}
     else if(mode==='benchmark')rules=BENCHMARK_RULES;
     else if(mode==='adaptive') {const selection=chooseAdaptive(sessions,seconds);rules=selection.rules;weights=selection.weights;}
-    else if(mode==='custom')rules=customRules({durationSeconds:seconds,enabled:selected});
+    else if(mode==='custom')rules=customRulesWithRanges(seconds,selected);
     else if(mode==='isolation')rules=operationDrill(selected[0],seconds);
     else if(mode==='sprint')rules=sprintRules(30);
     else if(mode==='endurance')rules=enduranceRules(300);
@@ -388,9 +400,32 @@ function startGame({ replay=null, drill=null, preset=null }={}) {
   $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':mode==='drill'?(drill?.stage==='probe'?`TRANSFER PROBE · ${rules.label} · PRACTICE`:drill?.stage==='flash'?`FLASH · ${rules.label} · PRACTICE`:`DRILL · ${rules.label} · PRACTICE`):`${mode.toUpperCase()} PRACTICE`;
   $('#game-score').innerHTML='0 <small>correct</small>';
   $('#answer').value='';
+  syncKeypad();
   renderGhostPace();
   updateQuestion(); renderTick(); clearInterval(tick); tick=setInterval(renderTick,60);
   $('#answer').focus();
+}
+/**
+ * Custom operand ranges (F02, M1 close-out). Reads the four setup axes (blank pair → that axis's
+ * standard range), persists them device-locally for the next visit, and builds the practice-only
+ * custom ruleset. Validation errors surface through the existing `catch` as `alert(error.message)`.
+ */
+function customRulesWithRanges(seconds,selected) {
+  const ranges=customRangesFromFields({
+    addLeftLo:$('#add-left-min')?.value, addLeftHi:$('#add-left-max')?.value,
+    addRightLo:$('#add-right-min')?.value, addRightHi:$('#add-right-max')?.value,
+    mulLeftLo:$('#mul-left-min')?.value, mulLeftHi:$('#mul-left-max')?.value,
+    mulRightLo:$('#mul-right-min')?.value, mulRightHi:$('#mul-right-max')?.value,
+  });
+  writeCustomRanges(localStorage,ranges);
+  return customRules({durationSeconds:seconds,enabled:selected,addition:ranges.addition,multiplication:ranges.multiplication});
+}
+/** Prefill the range fields with the last-used custom ranges at load; hidden until custom mode. */
+function prefillCustomRanges(store=localStorage) {
+  const stored=readCustomRanges(store);
+  if(!stored)return;
+  const fields=[['add-left-min',stored.addition.left[0]],['add-left-max',stored.addition.left[1]],['add-right-min',stored.addition.right[0]],['add-right-max',stored.addition.right[1]],['mul-left-min',stored.multiplication.left[0]],['mul-left-max',stored.multiplication.left[1]],['mul-right-min',stored.multiplication.right[0]],['mul-right-max',stored.multiplication.right[1]]];
+  for(const [id,value] of fields){const input=document.getElementById(id);if(input)input.value=String(value);}
 }
 function renderGhostPace(remainingMs) {
   const ghostEl=$('#ghost-pace');
@@ -429,14 +464,58 @@ function renderTick() {
   renderGhostPace(ms);
   if(currentSession.state==='finished')finishGame(false);
 }
+/** Lazily create the audio context on a user gesture; null when unavailable or unwanted. */
+function soundContext() {
+  if(!entrySettings.sound)return null;
+  try {
+    if(!audioContext)audioContext=new (globalThis.AudioContext??globalThis.webkitAudioContext)();
+    if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
+    return audioContext;
+  } catch { return null; }
+}
+function soundCue(name){playCue(soundContext(),name,entrySettings.sound);}
+/**
+ * One shared entry path for every answer feed (keyboard, keypad, replay of gestures): trim to the
+ * field cap, hand the full text to the session, clear on solve. The keypad (F05) uses exactly
+ * this path, so telemetry, timings and the answer rule are identical to typed input.
+ */
+function feedAnswer(value) {
+  if(currentSession?.state!=='active')return false;
+  const input=$('#answer');
+  if(String(value).length>MAX_FIELD)value=String(value).slice(0,MAX_FIELD);
+  input.value=value;
+  const solved=currentSession.recordInput(value);
+  if(currentSession.state==='finished'){finishGame(false);return true;}
+  if(solved){input.value='';updateQuestion();soundCue('correct');}
+  return solved;
+}
 function answerInput(event) {
+  feedAnswer(event.currentTarget.value);
+}
+// On-screen keypad (F05, M1 close-out): the same buttons on every device. `pointerdown`
+// preventDefault keeps keyboard focus in the answer field (so typing never skips); the buttons
+// remain real `<button>`s and tabbable, and Enter mirrors the physical Enter semantics (a wrong
+// submission record, exactly like the original game — no game effect).
+const KEYPAD_KEYS=['1','2','3','4','5','6','7','8','9','0','backspace','enter'];
+const KEYPAD_LABELS={backspace:'⌫ Delete',enter:'↵ Enter'};
+function renderKeypad() {
+  const pad=$('#keypad'); if(!pad)return;
+  pad.innerHTML=KEYPAD_KEYS.map(key=>`<button type="button" class="keypad-key${key==='enter'?' keypad-enter':''}" data-key="${key}" aria-label="${esc(KEYPAD_LABELS[key]??`digit ${key}`)}">${esc(KEYPAD_LABELS[key]??key)}</button>`).join('');
+  pad.querySelectorAll('.keypad-key').forEach(btn=>{
+    btn.addEventListener('pointerdown',e=>e.preventDefault()); // keep the answer field focused
+    btn.addEventListener('click',()=>padPress(btn.dataset.key));
+  });
+  syncKeypad();
+}
+function padPress(key) {
   if(currentSession?.state!=='active')return;
-  const input=event.currentTarget;
-  // Like the original, the field is not sanitized: stray characters must be deleted by the player.
-  if(input.value.length>MAX_FIELD)input.value=input.value.slice(0,MAX_FIELD);
-  const solved=currentSession.recordInput(input.value);
-  if(currentSession.state==='finished'){finishGame(false);return;}
-  if(solved){input.value='';updateQuestion();}
+  if(key==='backspace')feedAnswer($('#answer').value.slice(0,-1));
+  else if(key==='enter')currentSession.markWrongSubmission();
+  else feedAnswer($('#answer').value+key);
+}
+function syncKeypad() {
+  const pad=$('#keypad'); if(!pad)return;
+  pad.classList.toggle('hidden',!(entrySettings.keypad&&currentSession?.state==='active'));
 }
 async function finishGame(endedEarly) {
   if(!currentSession || currentSession.state==='ready')return;
@@ -459,6 +538,8 @@ async function finishGame(endedEarly) {
   $('#game').classList.add('hidden');$('#results').classList.remove('hidden');
   $('#result-title').textContent=result.benchmark?'Standard benchmark completed':`${result.mode} session completed`;
   $('#result-score').textContent=result.score;
+  syncKeypad();
+  soundCue('finish');
   const stats=sessionStats(result);
   const typology=errorTypology(result.events);
   const hidden=result.integrity?.hiddenMs>0?` · tab hidden ${fmt(result.integrity.hiddenMs)} (clock kept running)`:'';
@@ -531,6 +612,7 @@ function renderAnalytics(){
     <section class="panel" id="pace-root" aria-labelledby="pace-title"></section>
     <section class="panel" id="entry-root" aria-labelledby="entry-title"></section>
     <section class="panel" id="heatmap-root" aria-labelledby="heatmap-title"></section>
+    <section class="panel" id="replay-root" aria-labelledby="replay-title"></section>
     <div class="panel"><h2 class="section-title">Time by operation</h2><div class="breakdown">${ops.map(o=>`<div class="breakdown-row"><span>${opNames[o.op]}</span><div class="bar"><div style="width:${Math.max(0,(o.medianMs??0)/maxTime*100)}%"></div></div><span>${fmt(o.medianMs)} <span class="muted">(${o.count}${o.ci?` · CI ${fmt(o.ci.low)}–${fmt(o.ci.high)}`:''})</span></span></div>`).join('')}</div><p class="secondary">Median per correctly solved problem across all sessions, with sample count and a 95% CI of the median once there are 6 or more. Lower is faster. Practice sessions included.</p></div>
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Current bottlenecks</h2>${worst.length?worst.map(w=>`<p class="secondary"><strong>${opNames[w.key]}</strong> · ${fmt(w.rawMedianMs)} median · ${w.count} observations</p>`).join(''):'<p class="secondary">More solved questions needed before identifying reliable weaknesses.</p>'}<p class="small muted">Heuristic, sample-size-smoothed estimates; not a validated cognitive assessment.</p></div>
     <div class="panel"><h2 class="section-title">Slowest questions</h2>${allEvents.length?[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5).map(q=>`<div class="history-row"><span>${esc(`${q.left} ${q.symbol} ${q.right} = ${q.answer}`)}</span><strong>${fmt(q.responseMs)}</strong><span>${esc(q.op)}</span></div>`).join(''):'<div class="empty">No solved questions yet.</div>'}<button type="button" class="secondary-btn" id="replay-slow" ${allEvents.length?'':'disabled'}>Replay slowest five →</button></div></div>
@@ -542,6 +624,7 @@ function renderAnalytics(){
   renderPace();
   renderEntry();
   renderHeatmap();
+  renderReplayUI({root:$('#replay-root'),sessions,onReplay:items=>{setView('train');showIdle();startGame({replay:items});}});
   $('#replay-slow').addEventListener('click',()=>{
     const slow=[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5);
     if(!slow.length)return;
@@ -990,8 +1073,10 @@ function renderLessons(filter) {
   if(filter!==undefined)lessonFilter=filter;
   const list=lessonFilter==='all'?LESSONS:LESSONS.filter(l=>l.operation===lessonFilter);
   $('#lessons').innerHTML=list.map(l=>{
+    // Every Academy card — addition, subtraction, multiplication and division (F26) — rehearses:
+    // guided, partial and independent modes with exact deterministic checking and transfer draws.
     const guided=GUIDE_LESSON_IDS.includes(l.id);
-    const practice=guided?academyHtml(l):'<p class="academy-note">Step-by-step practice for division is not built yet (F26) — this card stays a worked example.</p>';
+    const practice=guided?academyHtml(l):'<p class="academy-note">This card has no step plan yet — it stays a worked example.</p>';
     return `<article class="lesson-card"><div class="eyebrow">${esc(opNames[l.operation])}</div><h3>${esc(l.title)}</h3><div class="lesson-equation">${esc(l.example)}</div><ol>${l.steps.map(step=>`<li>${esc(step)}</li>`).join('')}</ol><strong>Answer: ${l.result}</strong>${practice}</article>`;
   }).join('');
   bindAcademy($('#lessons'));
@@ -1554,6 +1639,18 @@ function bind(){
   $('#calibration-modal')?.addEventListener('cancel',closeCalibrationModal);
   $('#challenge-modal-close')?.addEventListener('click',()=>$('#challenge-modal')?.close());
   $('#challenge-modal')?.addEventListener('cancel',()=>$('#challenge-modal')?.close());
+  // Entry settings (F05): persisted toggles feeding the shared answer path and cosmetic sounds.
+  entrySettings=readEntrySettings(localStorage);
+  $('#setting-keypad')?.addEventListener('change',e=>{entrySettings=writeEntrySettings(localStorage,{...entrySettings,keypad:e.target.checked});});
+  $('#setting-sound')?.addEventListener('change',e=>{entrySettings=writeEntrySettings(localStorage,{...entrySettings,sound:e.target.checked});soundCue('correct');});
+  $('#setting-keypad').checked=entrySettings.keypad;
+  $('#setting-sound').checked=entrySettings.sound;
+  prefillCustomRanges();
+  renderKeypad();
+  // Academy close-out surfaces (F26–F29): division cards rehearse above; the strategy duel and
+  // the pasted-explanation verifier live beside them, both unscored and unconnected.
+  renderDuelUI({root:$('#duel-panel')});
+  renderCoachUI({root:$('#coach-panel')});
   $$('#lesson-filters button').forEach(button=>button.addEventListener('click',()=>{$$('#lesson-filters button').forEach(b=>b.classList.toggle('selected',b===button));renderLessons(button.dataset.op);}));
 }
 bind();updateMode();renderLessons();renderRoadmap();renderCommunity();renderQuant();checkUrlChallenge();applyHeatmapHash();refresh().catch(error=>console.error('History loading failed',error));

@@ -15,6 +15,55 @@
 .typology{margin-top:14px}
 @media (max-width:820px){.heatmap-layout{grid-template-columns:1fr}}
 
+/* Setup extras (F02 operand ranges, F05 settings): compact sub-forms inside the setup panel */
+.setup-extra{border:1px solid var(--border);background:#101c2a;border-radius:9px;padding:10px 13px;margin-bottom:14px}
+.setup-extra summary{cursor:pointer;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.setup-extra[open]{padding-bottom:14px}
+.setup-extra>summary::marker{color:var(--accent)}
+.range-grid{display:grid;gap:8px;margin-top:12px}
+.range-row{display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:10px;align-items:center;font-size:12px;color:#c3d3e0}
+.range-row small{display:block;color:var(--muted);font-size:10px;text-transform:none}
+.range-pair{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.range-pair input{background:#0c1724;border:1px solid #324154;color:var(--text);padding:9px 10px;min-height:38px;border-radius:7px;width:100%}
+.check-row{display:flex;gap:9px;align-items:center;font-size:13px;margin:10px 0}
+.check-row small{color:var(--muted)}
+.check-row input{accent-color:var(--accent);width:16px;height:16px}
+
+/* On-screen keypad (F05): grid under the answer field, share of space for Enter/Delete */
+.keypad{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;max-width:365px;margin:10px auto 0}
+.keypad-key{border:1px solid #33465a;background:#16232f;color:#dbe8f2;border-radius:8px;padding:13px 0;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.keypad-key:hover{background:#22344a}
+.keypad-key.keypad-enter{grid-column:span 2;color:var(--accent);border-color:#3a5f52}
+.keypad:not(.hidden)+.game-foot{margin-top:26px}
+@media(max-width:540px){.keypad{grid-template-columns:repeat(5,1fr)}}
+
+/* Sequence history viewer (F04) */
+.seq-list{border:1px solid var(--border);border-radius:10px;max-height:420px;overflow-y:auto;margin:12px 0;scrollbar-width:thin}
+.seq-list:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.seq-row{display:grid;grid-template-columns:44px minmax(0,1fr) 120px;gap:6px 12px;padding:10px 14px;border-bottom:1px solid #22303f;font-size:13px}
+.seq-row:last-child{border-bottom:0}
+.seq-row.is-current{background:#1c2c3e}
+.seq-idx{color:var(--muted);font-variant-numeric:tabular-nums}
+.seq-label{font-weight:700;font-variant-numeric:tabular-nums}
+.seq-status{font-size:11px;color:var(--muted);text-align:right}
+.seq-label,.seq-status{grid-row:1}
+.seq-meta{grid-column:2/4;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+@media(max-width:540px){.seq-row{grid-template-columns:34px 1fr 86px}}
+
+/* Strategy duel (F27) and coach verifier (F29) panels */
+.duel-panel,.coach-panel{margin-top:18px}
+.duel-problem{font-size:30px;font-weight:800;letter-spacing:-1px}
+.duel-tally .duel-why{color:var(--muted);font-size:12px}
+.coach-brief{border:1px solid var(--border);background:var(--surface2);border-radius:10px;padding:14px 16px;margin:12px 0}
+.coach-verdict{border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;line-height:1.6}
+.coach-verified{border:1px solid #3a5f52;background:#12261f;color:var(--accent)}
+.coach-verified ul{margin:8px 0 0;padding-left:20px;color:var(--text)}
+.coach-rejected{border:1px solid #6b3838;background:#2a1616;color:var(--red)}
+.coach-consent{margin:4px 0 10px}
+.coach-consent input{accent-color:var(--accent);width:16px;height:16px}
+.coach-consent span{font-size:13px}
+
+
 /* Benchmark consistency (F43/F15) */
 .consistency-tiles{grid-template-columns:repeat(4,minmax(0,1fr));margin:14px 0}.consistency-tiles strong small{font-size:13px;font-weight:600;color:var(--muted)}
 .tile-note{display:block;margin-top:6px;font-size:12px;color:var(--muted);line-height:1.35}

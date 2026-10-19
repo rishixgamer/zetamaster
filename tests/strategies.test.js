@@ -109,7 +109,15 @@ test('duelTally is a plain matched-problem comparison, aligned by index', () => 
   assert.equal(tally.correctA, 2);
   assert.equal(tally.correctB, 2);
   assert.match(tally.note, /no significance test/);
+  // The documented contract returns the per-problem head-to-head as well (used by the duel UI).
+  assert.deepEqual(tally.per, [
+    { pair: 0, correctA: true, correctB: true },
+    { pair: 1, correctA: false, correctB: true },
+    { pair: 2, correctA: true, correctB: false },
+  ]);
   // Misaligned lengths compare only the aligned prefix.
   assert.equal(duelTally([], []).compared, 0);
   assert.equal(duelTally([{ correct: true }], []).compared, 0);
+  assert.deepEqual(duelTally([], []).per, []);
+  assert.deepEqual(duelTally([{ correct: true }], []).per, []);
 });

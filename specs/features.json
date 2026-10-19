@@ -24,10 +24,11 @@
    "id": "F02",
    "area": "Core",
    "title": "Custom training mode",
-   "status": "partial",
+   "status": "implemented",
    "owner": "web/core",
    "acceptance": [
-    "Operation and duration selection works; extend exposed operand ranges and feedback settings"
+    "Custom min/max operands for both addition and multiplication axes, practice-only",
+    "Setup panel exposes per-axis ranges; sub/div derive inversely from the same axes and the UI says so. Validation mirrors the engine bounds (1–10000, min ≤ max, safe integers); a half-filled axis is a clear named error, never a guess. Last-used ranges persist device-locally and prefill. Custom rulesets can never validate as the benchmark, and the benchmark ruleset and scoring stay untouched."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -48,10 +49,11 @@
    "id": "F04",
    "area": "Core",
    "title": "Seeded tests and replay",
-   "status": "partial",
+   "status": "implemented",
    "owner": "core/web",
    "acceptance": [
-    "Deterministic generator and slow-question replay; add sequence history replays"
+    "Sequence history viewer over recorded sessions; replay launches an unscored practice copy",
+    "The viewer lists every recorded question in recorded order with telemetry (answer corrections, wrong attempts, the unfinished final problem flagged as unanswered, engine-1 records shown as accuracy-unknown rather than fabricated-clean). Benchmark sessions are explicitly labeled as replay practice. Played replays untimed, unscored, persisted only as practice sessions with full rules provenance."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -60,10 +62,11 @@
    "id": "F05",
    "area": "Core",
    "title": "Input optimization",
-   "status": "partial",
+   "status": "implemented",
    "owner": "web",
    "acceptance": [
-    "Auto-answer and keyboard focus work; add configurable keypad and sound"
+    "Keyboard/auto-answer work plus an optional on-screen keypad and answer sound cues",
+    "Keypad and sound toggles persist device-locally and default OFF. The keypad feeds the same answer field and session recordInput path, and cues are cosmetic WebAudio blips emitted after a question is already scored: neither touches timing telemetry, scoring, or the answer rule. Audio failures degrade to silence and can never break a run."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -121,10 +124,11 @@
    "id": "F10",
    "area": "Analytics",
    "title": "Difficulty classification",
-   "status": "partial",
+   "status": "implemented",
    "owner": "core",
    "acceptance": [
-    "Multiple classification tags; validate taxonomy and extend harder patterns"
+    "Exact tag taxonomy extended additively with harder-shape tags, pinned by computed tests",
+    "New tags (double-column-carry with exact columnar carry counting, three-digit-operands, two-by-two, product-1000-plus, multi-digit-quotient, prime/composite-divisor) are hand-computed and property-tested across the benchmark and F02 custom-range operand spaces. The constraint is only-add: a question's tags derive solely from its operands and every pre-extension tag set stays byte-identical, so stored historical events keep their original tags."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -324,10 +328,11 @@
    "id": "F26",
    "area": "Curriculum",
    "title": "Division techniques",
-   "status": "partial",
+   "status": "implemented",
    "owner": "curriculum",
    "acceptance": [
-    "Inverse and factoring examples; add validated practice variants"
+    "All division cards rehearse step by step with checked plans, transfer draws and drills",
+    "Inverse-multiplication, factor-the-divisor and estimate cards offer guided/partial/independent rehearsal with exactly checked answers, seeded transfer problems (provenance kept in the UI) and a 60 s drill launch. Out-of-domain operands show an honest message instead of a wrong plan. Rehearsal is untimed, unscored and unsaved."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -336,10 +341,11 @@
    "id": "F27",
    "area": "Curriculum",
    "title": "Strategy selection training",
-   "status": "planned",
+   "status": "implemented",
    "owner": "curriculum/training",
    "acceptance": [
-    "Compare two mental algorithms on matched unseen examples"
+    "Compare two curated techniques arm-by-arm on matched seeded example sets, no scoring",
+    "The strategy duel walks a seeded fixture (addition: round-vs-left-to-right; division: inverse-multiplication-vs-factor) record by the same problems with each arm keeping its own first-try tally per problem, plus a deterministic per-problem recommendation with its stated why. The head-to-head is an honest tiny-n comparison in fixture order, never a significance claim. Operations whose cards do not overlap state why a duel does not exist."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -348,10 +354,11 @@
    "id": "F28",
    "area": "Curriculum",
    "title": "Interactive worked examples",
-   "status": "partial",
+   "status": "implemented",
    "owner": "curriculum/web",
    "acceptance": [
-    "Readable steps exist; add interactive prompts with feedback"
+    "Interactive step prompts with exact feedback in guided, partial and independent modes",
+    "Technique cards accept typed answers at each step (guided), at the composition only (partial), or once for the full answer without steps (independent); a wrong entry asks the learner to recompute and never reveals or grades by score. Answers are checked by the exact deterministic guide checker. Seeded new problems transfer the same technique to fresh operands with the seed shown for reproducibility. Untimed and unscored."
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -360,10 +367,11 @@
    "id": "F29",
    "area": "Curriculum",
    "title": "Optional AI math coach",
-   "status": "planned",
+   "status": "implemented",
    "owner": "services",
    "acceptance": [
-    "Opt-in explanations checked by deterministic arithmetic verification; no answer grading by LLM"
+    "Consent-gated verifier for pasted explanations against checked plans; no grading, no network",
+    "The coach surface is opt-in (OFF by default, device-local, revocable) and offers the checked local brief for an Academy card plus a verifier for prose pasted from any external tool: every arithmetic claim is recomputed against the card's deterministic plan, claims shown only when all hold, and wrong, invented or unverifiable text is rejected with the exact reason and never rendered as endorsed content. The verifier exposes no answer/score fields. This build has no network transport and stores no keys; payloads reaching for providers are refused."
    ],
    "dependencies": [],
    "benchmarkSafe": true
