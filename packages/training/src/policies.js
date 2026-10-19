@@ -13,9 +13,12 @@ import { impactCandidates } from './impact.js';
  *     panel lets you run whatever policy you like),
  * 3. what a stored feature flag overrides.
  *
- * NO run-outcome comparison exists yet: nothing records which policy produced a practice run, so
- * no claim that one policy beats another is supportable here. Outcome testing needs the M4
- * experiment machinery (run tags riding the session record, hypothesis windows, holdout checks).
+ * NO run-outcome comparison exists yet: practice runs now carry launch provenance (which surface
+ * and emphasized policy produced them — packages/training/src/provenance.js, F20/F21 substrate),
+ * but provenance is emphasis-context, not a randomized treatment arm, so no claim that one policy
+ * beats another is supportable here either way. Outcome *testing* (paired observed deltas,
+ * assignment windows, holdouts) is the M4 experiment slice (F37); treatmentOutcomes() already
+ * computes observational pairs from the provenance ledger as diagnostic input to it.
  * Deterministic: `seed` drives only the assignment, never the projections.
  */
 
@@ -95,6 +98,6 @@ export function comparePolicies(sessions, { seed, flag } = {}) {
     ranked,
     note: resolved.valid
       ? `Feature flag pinned the emphasis to ${resolved.value}; the seeded assignment (${assignment}) is advisory and logged above.`
-      : `Seeded assignment ${assignment} → ${byAssignment.policyId} emphasis. No outcome tracking yet: this comparison cannot claim one policy is better.`,
+      : `Seeded assignment ${assignment} → ${byAssignment.policyId} emphasis. Practice runs record this emphasis as launch context (provenance), but no randomized outcome test exists: this comparison cannot claim one policy is better.`,
   };
 }

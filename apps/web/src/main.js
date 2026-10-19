@@ -20,6 +20,7 @@ import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { buildRecommendations } from '../../../packages/training/src/recommendations.js';
 import { comparePolicies } from '../../../packages/training/src/policies.js';
+import { sanitizeProvenance } from '../../../packages/training/src/provenance.js';
 import { evaluateProgression, PROGRESSION_STAGES, getStageForScore, MIN_PROGRESSION_BENCHMARKS } from '../../../packages/training/src/progression.js';
 import { selectPersonalBestBenchmark, buildGhostTrajectory, compareGhostPace } from '../../../packages/analytics/src/ghost.js';
 import { generateCopyTrials, evaluateCopyTrial, computeHardwareDiagnostics } from '../../../packages/core/src/calibration.js';
@@ -62,6 +63,7 @@ const MAX_FIELD=24;
 let currentMode='benchmark';
 let currentReplay=null;
 let currentDrill=null;
+let currentProvenance=null;
 let activeGhostTrajectory=null; // Personal-best ghost racing trajectory (F33)
 let calibState={step:'intro',trials:[],index:0,trialStartedAt:0,results:[]}; // Hardware calibration (F40)
 const heatmapState={op:'mul',scope:'benchmark',focus:{row:0,col:0},selected:null};
@@ -202,10 +204,17 @@ function renderGauntlet(){
     const cellId=btn.dataset.gauntletLaunch, stage=btn.dataset.gauntletStage;
     try {
       const launch=gauntletLaunch(plan,cellId,stage);
-      startGame({preset:{mode:launch.mode,rules:launch.rules,seed:launch.seed,varied:launch.varied,drill:launch.drill}});
+      // F20/F21 provenance: the gauntlet is the training method being evaluated — drills, probes
+      // and the finish-with-standard-benchmark handoff all record this surface.
+      startGame({preset:{mode:launch.mode,rules:launch.rules,seed:launch.seed,varied:launch.varied,drill:launch.drill},provenance:{surface:'gauntlet',stage,cellId}});
     } catch(error){alert(error.message);}
   }));
-  $('#gauntlet-benchmark')?.addEventListener('click',()=>{$('#mode').value='benchmark';updateMode();startGame();});
+  $('#gauntlet-benchmark')?.addEventListener('click',()=>{
+    $('#mode').value='benchmark';updateMode();
+    // The standard run that closes a gauntlet day is the measurement arm: provenance links it to
+    // the treatment bursts that came before it (metadata only — validity is unaffected).
+    startGame({provenance:{surface:'gauntlet',stage:'benchmark'}});
+  });
 }
 // Speed-interval sets (F30 close-out): several short work bouts — each an independent 'sprint'
 // practice run — separated by recovery pauses the user continues by hand. The rest meter is
@@ -288,7 +297,7 @@ function renderReviewQueue(){
   root.querySelectorAll('[data-review-launch]').forEach(btn=>btn.addEventListener('click',()=>{
     const cell=skillCellFromId(btn.dataset.reviewLaunch);
     const tier=Number(btn.dataset.reviewTier);
-    if(cell)startGame({drill:{...cell,tier:Number.isInteger(tier)?tier:undefined}});
+    if(cell)startGame({drill:{...cell,tier:Number.isInteger(tier)?tier:undefined},provenance:{surface:'review-queue',cellId:cell.id??cell.label,stage:'review'}});
   }));
 }
 // Merged, evidence-linked recommendations (F38) plus the seeded policy-comparison card (F21). The
@@ -321,12 +330,13 @@ function renderRecommendations() {
   root.innerHTML=`<div class="section-header"><div><div class="eyebrow">PROGRESS-BASED RECOMMENDATIONS · MERGED</div><h2 class="section-title">What's worth doing next</h2></div><span class="tag">${items.length} LEAD${items.length===1?'':'S'}</span></div>
     ${error?`<p class="secondary">Recommendations unavailable: ${esc(error)}</p>`:`<div class="review-list">${rows}</div>
     <div class="subline" id="policy-compare">${esc(policy?.note??'Policy comparison unavailable.')}</div>`}
-    <p class="small muted">Recommendations merge due pattern reviews, the weakest sample-gated patterns, the plateau protocol and one estimated-payoff line (reads your verified benchmark pace and medians). Estimates are arithmetic on your own history, not predictions of what training will achieve. The policy line only chooses which surface to emphasize; no run-outcome tracking exists (${esc(policy?.assignment ?? '')}).</p>`;
+    <p class="small muted">Recommendations merge due pattern reviews, the weakest sample-gated patterns, the plateau protocol and one estimated-payoff line (reads your verified benchmark pace and medians). Estimates are arithmetic on your own history, not predictions of what training will achieve. The policy line only chooses which surface to emphasize. Practice runs now record the launch context (surface · emphasized policy · cell) as provenance (F20/F21) — that history is observational: no randomized arm yet, so nothing here may claim one policy beats another (${esc(policy?.assignment ?? '')}).</p>`;
   root.querySelectorAll('[data-rec-drill]').forEach(btn=>btn.addEventListener('click',()=>{
     const item=items.find(x=>x.launch.type==='drill'&&((x.launch.cell.id??x.launch.cell.label)===btn.dataset.recDrill||x.launch.cell.label===btn.dataset.recDrill));
     if(!item)return;
     const cell=skillCellFromId(item.launch.cell.id)??item.launch.cell;
-    startGame({drill:{...cell,tier:drillTierForRecord(item.launch.record)}});
+    // F21: record the emphasized-policy context so treatment runs are attributable later.
+    startGame({drill:{...cell,tier:drillTierForRecord(item.launch.record)},provenance:{surface:'recommendations',cellId:cell.id??cell.label,policyId:policy?.emphasizedPolicyId??null}});
   }));
 }
 function setView(view) {  $$('.view').forEach(x=>x.classList.toggle('active',x.id==='view-'+view));
@@ -351,7 +361,7 @@ function updateMode() {
   const ranges=$('#custom-ranges');
   if(ranges){ranges.classList.toggle('hidden',mode!=='custom');ranges.open=mode==='custom';}
 }
-function startGame({ replay=null, drill=null, preset=null }={}) {
+function startGame({ replay=null, drill=null, preset=null, provenance=null }={}) {
   if(currentSession?.state==='active')return;
   // A preset is a fully built launch (rules + seed + drill payload) from a training module — the
   // gauntlet panel. The mode picker path is unchanged; presets phase in without touching it.
@@ -386,6 +396,9 @@ function startGame({ replay=null, drill=null, preset=null }={}) {
   else if(mode==='quant'||preset?.mode==='quant') generator=preset?.generator ?? createQuantGenerator(currentSeed);
   else generator=createGenerator(rules,currentSeed,weights);
   currentMode=mode; currentReplay=replay; currentDrill=drill;
+  // Run provenance (F20/F21): which surface/emphasized policy produced this practice run. Metadata
+  // only — sanitized and dropped when malformed, never allowed to block or alter the launch.
+  currentProvenance=sanitizeProvenance(provenance);
   // Ghost racing (F33): enable cumulative pace comparison during replay and practice against personal-best benchmark
   const isPracticeOrReplay=Boolean(replay || drill || preset || mode!=='benchmark');
   if(isPracticeOrReplay){
@@ -394,7 +407,7 @@ function startGame({ replay=null, drill=null, preset=null }={}) {
   } else {
     activeGhostTrajectory=null;
   }
-  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.cell??drill.id??drill.key,label:drill.label,tier:drill.tier??DEFAULT_DRILL_TIER,stage:drill.stage}:null});
+  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.cell??drill.id??drill.key,label:drill.label,tier:drill.tier??DEFAULT_DRILL_TIER,stage:drill.stage}:null,provenance:currentProvenance});
   currentSession.start();
   $('#idle-layout').classList.add('hidden');$('#top-metrics').classList.add('hidden');$('#results').classList.add('hidden');$('#game').classList.remove('hidden');
   $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':mode==='drill'?(drill?.stage==='probe'?`TRANSFER PROBE · ${rules.label} · PRACTICE`:drill?.stage==='flash'?`FLASH · ${rules.label} · PRACTICE`:`DRILL · ${rules.label} · PRACTICE`):`${mode.toUpperCase()} PRACTICE`;
@@ -949,12 +962,12 @@ function renderHeatmap(){
   });
   $('#drill-cell')?.addEventListener('click',()=>{
     setView('train');showIdle();
-    startGame({drill:{op:h.op,id:selectedCell.key,label:selectedCell.label,rowRange:selectedCell.rowRange,colRange:selectedCell.colRange}});
+    startGame({drill:{op:h.op,id:selectedCell.key,label:selectedCell.label,rowRange:selectedCell.rowRange,colRange:selectedCell.colRange},provenance:{surface:'heatmap',cellId:selectedCell.key}});
   });
   $('#flash-cell')?.addEventListener('click',()=>{
     setView('train');showIdle();
     // F31: latency-bound flash run; `stage:'flash'` marks it so the spaced ladder ignores it.
-    startGame({drill:{op:h.op,id:selectedCell.key,label:selectedCell.label,rowRange:selectedCell.rowRange,colRange:selectedCell.colRange,stage:'flash'}});
+    startGame({drill:{op:h.op,id:selectedCell.key,label:selectedCell.label,rowRange:selectedCell.rowRange,colRange:selectedCell.colRange,stage:'flash'},provenance:{surface:'heatmap',cellId:selectedCell.key,stage:'flash'}});
   });
 }
 function selectCell(row,col,focus){
@@ -1096,7 +1109,8 @@ function bindAcademy(root){
     const cell=guideDrillTarget(academy.lessonId,plan.a,plan.b);
     if(!cell){if(ACADEMY_NO_DRILL[academy.lessonId])alert(ACADEMY_NO_DRILL[academy.lessonId]);return;}
     setView('train');showIdle();
-    startGame({drill:{...cell}});
+    // Lesson hand-offs are their own training surface — tagged honestly, no policy attribution.
+    startGame({drill:{...cell},provenance:{surface:'academy',cellId:cell.id??cell.label}});
   }));
 }
 function renderRoadmap(){
@@ -1630,8 +1644,11 @@ function bind(){
   $('#finish').addEventListener('click',()=>finishGame(true));
   $('#again').addEventListener('click',()=>{
     showIdle();
-    if(lastPreset)startGame({preset:lastPreset});
-    else startGame({replay:currentReplay,drill:currentDrill});
+    // "Play again" repeats the same launch, so it carries the same provenance context (drill/panel
+    // paths). A benchmark or replay rebuild doesn't re-tag: replays re-execute an old run.
+    if(lastPreset)startGame({preset:lastPreset,provenance:currentProvenance});
+    else if(currentDrill)startGame({drill:currentDrill,provenance:currentProvenance});
+    else startGame({replay:currentReplay});
   });
   $('#analyze-result').addEventListener('click',()=>{showIdle();setView('analytics');});
   $('#open-calibration')?.addEventListener('click',openCalibrationModal);

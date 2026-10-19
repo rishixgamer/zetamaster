@@ -62,6 +62,8 @@ Current code: seeded generator, inverse questions, immutable benchmark config, l
 
 **Gate:** Evaluation protocol prevents spurious precision and misleading causal claims.
 
+**Substrate note (pre-M4):** run provenance now exists (training/provenance.js, F20/F21): practice runs record the launch surface, emphasized policy and drilled cell, and `treatmentOutcomes` computes observational predicted-vs-observed pairs around valid benchmarks on the pre-treatment history prefix. The A/B machinery this milestone assigns — randomized arms, holdout windows, signed-off uncertainty — is still open; provenance is a context ledger, never causal evidence.
+
 ## M5 — Community, optional services
 
 **F44–F48.**

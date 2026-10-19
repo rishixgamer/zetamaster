@@ -2,6 +2,7 @@ import { benchmarkEquivalent, BENCHMARK_RULES, OPERATIONS } from '../../core/src
 import { makeQuestion } from '../../core/src/generator.js';
 import { MAX_WRONG_ATTEMPTS } from '../../core/src/session.js';
 import { SKILL_TAXONOMY_VERSION, skillCellFromId } from '../../training/src/skills.js';
+import { sanitizeProvenance } from '../../training/src/provenance.js';
 
 const NUMERIC_FIELDS = ['responseMs', 'firstInputMs', 'entryMs', 'corrections', 'wrongSubmissions', 'wrongPrefixes', 'fullWrongAnswers', 'inputChanges', 'completedAtMs', 'shownAtMs'];
 const MAX_EVENTS = 5000;
@@ -134,5 +135,8 @@ export function sanitizeImportedSession(s) {
     score: Math.max(0, Math.trunc(s.score)), elapsedMs, events,
     finalUnanswered: null,
     ...(s.drill && typeof s.drill === 'object' ? { drill: { cell: safeText(s.drill.cell, 40), op: OPERATIONS.includes(s.drill.op) ? s.drill.op : null } } : {}),
+    // Run provenance (F20/F21): whitelist-validated duplicate of the launch context. Malformed
+    // provenance is dropped, never repaired — a record with no attributes stays absent.
+    ...(sanitizeProvenance(s.provenance) ? { provenance: sanitizeProvenance(s.provenance) } : {}),
   };
 }

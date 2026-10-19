@@ -54,6 +54,10 @@ telemetry and benchmark eligibility are unaffected.
 
 `benchmark` is true only if `mode === 'benchmark'`, the rules snapshot equals `BENCHMARK_RULES`, the full duration elapsed, and the run wasn't ended manually. Imported sessions get this recomputed from those same fields by `packages/storage/src/sanitize.js`, and the score must also equal the number of solved events. Imported wrong attempts are whitelist-rebuilt per entry (capped at `MAX_WRONG_ATTEMPTS`, trimmed/truncated values, non-finite or negative times dropped) so one forged member cannot invalidate a question; an absent list imports as absent — accuracy unknown, never normalized to "clean".
 
+## Run provenance (F20/F21)
+
+Practice runs launched from a training surface carry a `provenance` object on the session record: `{ surface, policyId, cellId, stage }` — the surface is one of `recommendations | review-queue | heatmap | gauntlet | academy`; `policyId` (Train-panel drills only) records the policy the Train tab *emphasized at launch*; `stage` carries launch kinds like `train`, `probe`, `flash` or the gauntlet's finish-with-standard-benchmark hand-off (`benchmark`). `packages/training/src/provenance.js` whitelist-validates the record (`sanitizeProvenance`), and imported sessions keep it only after revalidation — malformed provenance is dropped, never repaired. Honesty rules: provenance is metadata only, it never affects scoring, timing or benchmark eligibility (a tagged standard run is validated by exactly the same fields as before), and the emphasized-policy tag is a *context tag*, not a randomized arm — `treatmentOutcomes` pairs connected valid benchmarks with attributed treatment runs (predicted from the pre-treatment history prefix, observed as the raw score change) for diagnostics; no causal claim and no efficacy claim is supported anywhere.
+
 ## Sample-size guidance
 
 Medians from fewer than 6 observations get no confidence interval. Heatmap cells with fewer than 3 observations are shown as insufficient. None of these numbers are calibrated psychometric measures.

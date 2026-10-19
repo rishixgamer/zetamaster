@@ -33,7 +33,7 @@ export function isAnswerPrefix(value, answer) { return String(answer).startsWith
  *   how long the problem was shown and never counts towards the score or the review evidence.
  */
 export class ArithmeticSession {
-  constructor({ rules, generator, clock = () => performance.now(), wallClock = () => new Date().toISOString(), mode = 'benchmark', seed = '', captureTrace = true, drill = null }) {
+  constructor({ rules, generator, clock = () => performance.now(), wallClock = () => new Date().toISOString(), mode = 'benchmark', seed = '', captureTrace = true, drill = null, provenance = null }) {
     this.rules = rules;
     this.generator = generator;
     this.clock = clock;
@@ -42,6 +42,10 @@ export class ArithmeticSession {
     this.seed = seed;
     this.captureTrace = captureTrace;
     this.drill = drill;
+    // Run provenance (F20/F21): launch-surface/policy context riding on the result as read-only
+    // metadata. Dumb passthrough — consumers sanitize (training/provenance.js, storage whitelist);
+    // it never touches scoring, timing or benchmark validity.
+    this.provenance = provenance && typeof provenance === 'object' ? provenance : null;
     this.state = 'ready';
     this.events = [];
     this.missedEvents = []; // latency-budget expirations (F31); never counted as solves or scores
@@ -185,6 +189,7 @@ export class ArithmeticSession {
       missedCount: this.missedEvents.length,
       missedEvents: [...this.missedEvents],
       ...(this.drill ? { drill: this.drill } : {}),
+      ...(this.provenance ? { provenance: { ...this.provenance } } : {}),
     };
     return this.result;
   }
