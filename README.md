@@ -47,7 +47,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 - IndexedDB-first session storage with localStorage fallback, downloadable JSON/CSV, JSON import, and opt-in local history deletion.
 - Installable PWA with offline cache after an initial successful visit (browser permitting).
 - Tests, code-agent instructions, development roadmap and **55 machine-readable acceptance records**.
-- **Browser smoke runner** (`npm run smoke`): 18 end-to-end checks against the real app in a real Chrome (launch, custom ranges, keypad persistence, replay, Academy, quant view, a full 120-second standard benchmark stored `benchmark: true`, benchmark isolation sweep, zero page errors) — see [SMOKE](docs/SMOKE.md); no new dependencies.
+- **Browser smoke runner** (`npm run smoke`): 18 end-to-end checks against the real app in a real Chrome (launch, custom ranges, keypad persistence, replay, Academy, quant view, a full 120-second standard benchmark stored `benchmark: true`, benchmark isolation sweep, zero page errors) — see [SMOKE](docs/SMOKE.md); no new dependencies. Requires a locally installed Chrome and Node ≥ 22.
 
 ## What is not finished
 

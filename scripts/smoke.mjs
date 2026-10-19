@@ -1,24 +1,27 @@
 #!/usr/bin/env node
 /**
- * ZetaMaster browser smoke runner (M1 item 5, "end-to-end browser test runner").
+ * ZetaMaster browser smoke runner (M1 item 5: an end-to-end browser test runner).
  *
- * Drives the real app served by scripts/serve.mjs inside a real Chrome over the DevTools
- * protocol — no new dependencies: Node >= 22 provides `WebSocket`, and the runner launches the
- * Chrome already installed on the machine (macOS path below, override with $CHROME_BIN).
- *
- * The browser profile is a throwaway temp dir, so the user's own browser storage is never touched.
- * Every interaction goes through the same DOM surfaces a human uses (mode select, setup fields,
- * keypad buttons, answer input events); nothing calls the app's internals directly.
+ * Drives the real app in a real headless Chrome over the DevTools protocol — no npm dependencies:
+ * Node >= 22 is required because the CDP client uses the global WebSocket; the runner launches the
+ * Chrome already installed on the machine (macOS path below, override with $CHROME_BIN). It serves
+ * the app itself on a free ephemeral port with the same handler contract as scripts/serve.mjs
+ * (including the nosniff header), from a throwaway browser profile: user data and dev servers are
+ * never touched. Every interaction goes through the same DOM surfaces a person uses (mode select,
+ * setup fields, keypad buttons, answer input events); nothing calls the app internals directly.
  *
  * Contract:
- *   `npm run smoke` (or `node scripts/smoke.mjs`) starts its own serve.mjs on a free port,
- *   boots a fresh headless Chrome, runs the checklist, prints PASS/FAIL per check, takes a
- *   screenshot into the repo's tmp dir, and exits non-zero on any failure.
+ *   `npm run smoke` boots a fresh headless Chrome, runs the checklist, prints PASS/FAIL per check,
+ *   takes a screenshot into the repo's tmp/ dir, and exits non-zero on any failure.
  *
  * Not covered here on purpose (pinned by unit tests instead): generator distribution parity,
  * spaced-review scheduling math, import sanitization — the smoke suite verifies the shipped UI
- * actually works in a browser, not arithmetic already word-pinned in tests/.
+ * actually works in a browser, not arithmetic already pinned in tests/.
  */
+if (typeof WebSocket === 'undefined') {
+  console.error('npm run smoke needs Node >= 22 (global WebSocket) — current node: ' + process.version);
+  process.exit(2);
+}
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -54,7 +57,7 @@ async function serveApp() {
       if (!pathname.startsWith(REPO + sep)) { res.writeHead(403); res.end(); return; }
       const target = (await stat(pathname).catch(() => null))?.isDirectory() ? resolve(pathname, 'index.html') : pathname;
       const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
-      res.writeHead(200, { 'Content-Type': mime[extname(target)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' });
+      res.writeHead(200, { 'Content-Type': mime[extname(target)] ?? 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       res.end(await readFile(target));
     } catch { res.writeHead(404); res.end('Not found'); }
   });
@@ -295,16 +298,26 @@ async function launchChrome(profileDir) {
     '--window-size=1280,960', 'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   const stderr = [];
-  const wsUrl = await new Promise((resolve, reject) => {
-    const dump = chunk => { stderr.push(String(chunk)); const m = stderr.join('').match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//); if (m) resolve(Number(m[1])); };
-    child.stderr.on('data', dump);
-    child.on('exit', code => reject(new Error('chrome exited early code ' + code + ': ' + stderr.join('').slice(0, 500))));
-    setTimeout(() => reject(new Error('chrome never reported a debug port: ' + stderr.join('').slice(0, 500))), 15000);
-  });
-  const targets = await (await fetch(`http://127.0.0.1:${wsUrl}/json/list`)).json();
-  const page = targets.find(t => t.type === 'page');
-  if (!page) throw new Error('no page target (targets: ' + JSON.stringify(targets.map(t => t.type)) + ')');
-  return { child, cdp: new Cdp(page.webSocketDebuggerUrl) };
+  let settled = false;
+  const bail = () => { try { child.kill('SIGTERM'); } catch {} };
+  try {
+    const wsUrl = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => fail(new Error('chrome never reported a debug port: ' + stderr.join('').slice(0, 500))), 15000);
+      const succeed = value => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } };
+      const fail = error => { if (!settled) { settled = true; clearTimeout(timer); bail(); reject(error); } };
+      child.stderr.on('data', chunk => { stderr.push(String(chunk)); const m = stderr.join('').match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//); if (m) succeed(Number(m[1])); });
+      child.on('error', error => fail(new Error('chrome spawn failed: ' + error.message + (stderr.join('').slice(0, 300)))));
+      child.on('exit', code => fail(new Error('chrome exited early code ' + code + ': ' + stderr.join('').slice(0, 500))));
+    });
+    const targets = await (await fetch(`http://127.0.0.1:${wsUrl}/json/list`)).json();
+    const page = targets.find(t => t.type === 'page');
+    if (!page) throw new Error('no page target (targets: ' + JSON.stringify(targets.map(t => t.type)) + ')');
+    settled = true;
+    return { child, cdp: new Cdp(page.webSocketDebuggerUrl) };
+  } catch (error) {
+    bail(); // never leave a zombie Chrome behind on any launch failure
+    throw error;
+  }
 }
 
 /* ---------- the checklist ---------- */
@@ -349,6 +362,7 @@ async function run(font) {
       const errs = await ev(cdp, pageErrors);
       assert(errs.alerts.length === 1, 'expected one alert, got ' + JSON.stringify(errs.alerts));
       assert(errs.alerts[0].includes('Addition: first addend'), 'alert must name the field: ' + errs.alerts[0]);
+      assert(!(await ev(cdp, gameVisible)), 'an invalid ruleset must never start a session');
       await ev(cdp, clearField, '#add-left-min');
       return 'alert: ' + errs.alerts[0];
     });
@@ -468,7 +482,8 @@ async function run(font) {
         }
         return false;
       };
-      await ensureOpen();
+      const opened = await ensureOpen();
+      if (!opened) throw new Error('academy panel did not reopen (transfer button missing)');
       await ev(cdp, click, '[data-academy-transfer]');
       const st = await ev(cdp, academyState);
       assert(/seed /.test(st.seedCode), 'transfer draw should show its seed: ' + st.seedCode);
@@ -494,7 +509,7 @@ async function run(font) {
       return q.firstTitle;
     });
 
-    await step('F43: seeded 120s standard benchmark completes and stores benchmark:true (virtual time)', async () => {
+    await step('F43: seeded 120s standard benchmark completes and stores benchmark:true (real time)', async () => {
       await ev(cdp, setNav, 'train');
       await ev(cdp, setMode, 'benchmark');
       await ev(cdp, setField, '#seed', 'smoke-seed-42');
@@ -543,6 +558,7 @@ async function run(font) {
       await ev(cdp, setNav, 'analytics');
       await waitUntil(cdp, () => document.querySelectorAll('#analytics-root .panel').length > 4, { label: 'analytics render' });
       const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+      await mkdir(join(REPO, 'tmp'), { recursive: true });
       const path = join(REPO, 'tmp', 'smoke-analytics.png');
       await writeFile(path, Buffer.from(shot.data, 'base64'));
       console.log(`  shot ${path}`);
@@ -566,9 +582,15 @@ async function run(font) {
     });
   } finally {
     if (cdp) cdp.close();
-    if (chrome) { chrome.kill('SIGTERM'); setTimeout(() => { try { chrome.kill('SIGKILL'); } catch {} rm(profileDir, { recursive: true, force: true }); }, 500); }
+    if (chrome) {
+      chrome.kill('SIGTERM');
+      await new Promise(r => setTimeout(r, 300));
+      try { chrome.kill('SIGKILL'); } catch {}
+      await rm(profileDir, { recursive: true, force: true }).catch(() => {});
+    }
     server.close();
-  }  const failed = results.filter(r => !r.ok);
+  }
+  const failed = results.filter(r => !r.ok);
   console.log(failed.length
     ? `\nSMOKE FAILED: ${results.length - failed.length}/${results.length} passed`
     : `\nSMOKE PASSED: ${results.length}/${results.length} checks green`);

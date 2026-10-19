@@ -22,8 +22,9 @@ npm run smoke
 
 Requirements: Chrome installed at `/Applications/Google Chrome.app` (macOS default; override with
 `$CHROME_BIN`) and Node >= 22 on the PATH of the machine running it (Node 22+ ships `WebSocket`,
-which the CDP client uses; no npm dependencies are added). The runner starts its own server on a
-free ephemeral port, so it does not conflict with `npm run dev`.
+which the CDP client uses; no npm dependencies are added; the script exits cleanly with a version
+message on older Node). The runner serves the app itself on a free ephemeral port, so it does not
+conflict with `npm run dev`.
 
 ## What the pass covers
 
@@ -51,7 +52,7 @@ review scheduling math, import sanitization.
 
 ## Known limitations
 
-- The standard benchmark runs in real time (~2 minutes per pass) — deliberatly not virtualized:
+- The standard benchmark runs in real time (~2 minutes per pass) — deliberately not virtualized:
   DevTools virtual time (advance/pause) left IndexedDB completions frozen after the run ended,
   which hung every later storage read. Wall-clock execution keeps the whole suite honest.
 - The app's own `serviceWorker` occasionally holds a stale cache on very rapid successive runs in
