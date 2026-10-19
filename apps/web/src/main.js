@@ -20,6 +20,7 @@ import { nextGridPosition, heatmapHash, parseHeatmapHash } from './grid-nav.js';
 import { dailyPlan } from '../../../packages/training/src/planner.js';
 import { buildRecommendations } from '../../../packages/training/src/recommendations.js';
 import { comparePolicies } from '../../../packages/training/src/policies.js';
+import { createPolicyTrial, serializeTrial, parseStoredTrial, trialOutcomes, summarizeTrialOutcomes, TRIAL_WINDOW_DAYS, TRIAL_CYCLE_WINDOWS, TRIAL_MIN_PAIRS_PER_ARM } from '../../../packages/training/src/trial.js';
 import { sanitizeProvenance } from '../../../packages/training/src/provenance.js';
 import { evaluateProgression, PROGRESSION_STAGES, getStageForScore, MIN_PROGRESSION_BENCHMARKS } from '../../../packages/training/src/progression.js';
 import { selectPersonalBestBenchmark, buildGhostTrajectory, compareGhostPace } from '../../../packages/analytics/src/ghost.js';
@@ -312,13 +313,43 @@ function deviceSeed() {
     return seed;
   } catch { return crypto.randomUUID(); }
 }
+const TRIAL_STORAGE_KEY='zetamaster-policy-trial';
+// Randomized crossover policy trial card (F21/M4-F37 close-out): strictly opt-in. Joining makes
+// the Train panel's emphasis follow the seeded A/B window cycle — two treatment windows then a
+// holdout window — and leans on the provenance tagging that already exists; scoring, timing and
+// benchmark validity are untouched, and leaving reverts to the seeded assignment. The outcome
+// ledger below the card is the one-learner crossover reading with its full caveat list.
+function trialCardHtml(policy, trial, ledgerText) {
+  if (!trial) {
+    return `<div class="review-row"><span class="review-label">Randomized policy trial — not joined</span><span class="review-meta">Opt-in crossover: 3-day windows emphasize one of two policies (seeded order), every third window is a holdout with emphasis off; leave anytime. Practice-only — never touches benchmark scoring or validity.</span><button type="button" class="secondary-btn" data-trial-join>Join the trial</button></div>`;
+  }
+  const info=policy?.trial;
+  const drives=info?(info.phase==='holdout'
+    ?`holdout window ${info.windowIndex} (${info.startsAt.slice(0,10)} → ${info.endsAt.slice(0,10)}): emphasis OFF, drills from this panel launch unattributed`
+    :`window ${info.windowIndex} emphasizes ${info.policyId} until ${info.endsAt.slice(0,10)} (order: ${info.order}; next holdout from ${info.nextHoldout.startsAt.slice(0,10)})`):'window state unavailable right now';
+  return `<div class="review-row"><span class="review-label">Randomized policy trial · joined</span><span class="review-meta">${esc(drives)}</span><button type="button" class="secondary-btn" data-trial-leave>Leave trial</button></div>
+    <div class="subline">${esc(ledgerText ?? 'No attributed trial windows yet.')}</div>`;
+}
+function trialLedgerText(trial) {
+  if (!trial) return null;
+  try {
+    const summary=summarizeTrialOutcomes(trialOutcomes(sessions,trial),{trial});
+    if (!summary.policyOutcomes.length) return `No attributed trial windows yet (gate: ≥${TRIAL_MIN_PAIRS_PER_ARM} windows per policy).`;
+    const rows=summary.policyOutcomes.map(r=>`${r.policyId}: ${r.attributedWindows} window(s), median Δ ${r.medianDelta===null?'—':(r.medianDelta>0?'+':'')+r.medianDelta}, improving ${r.improvingShare.improving}/${r.improvingShare.windows} (95% ${Math.round(r.improvingShare.low*100)}–${Math.round(r.improvingShare.high*100)}%)`).join(' · ');
+    return `${rows} — ${summary.note} Caveats: ${summary.caveats.join(' ')}`;
+  } catch (error) {
+    return `Trial ledger unavailable: ${error.message}`;
+  }
+}
 function renderRecommendations() {
   const root=$('#recs-panel'); if(!root)return;
-  let items=[], policy=null, error=null;
+  let items=[], policy=null, trial=null, trialStored=null, error=null;
   try {
+    trialStored=localStorage.getItem(TRIAL_STORAGE_KEY);
+    trial=parseStoredTrial(trialStored);
     const recs=buildRecommendations({sessions,reviews:skillReviews,now:new Date().toISOString()});
     items=recs.items;
-    policy=comparePolicies(sessions,{seed:deviceSeed(),flag:localStorage.getItem('zetamaster-policy')});
+    policy=comparePolicies(sessions,{seed:deviceSeed(),flag:localStorage.getItem('zetamaster-policy'),trial,nowMs:Date.now()});
   } catch(e){error=e.message;}
   const kindLabels={review:'review', 'weak-cell': 'pattern', plateau:'protocol', impact:'estimate', coverage:'start'};
   const rows=items.length?items.map(item=>{
@@ -328,14 +359,21 @@ function renderRecommendations() {
     return `<div class="review-row"><span class="review-label">${esc(item.title)}</span><span class="review-meta">${esc(item.why)}${item.evidence?.length?` · ${esc(item.evidence.join(' · '))}`:''}</span>${launchBtn}</div>`;
   }).join(''):`<div class="empty">No recommendations yet — run a benchmark to start the evidence.</div>`;
   root.innerHTML=`<div class="section-header"><div><div class="eyebrow">PROGRESS-BASED RECOMMENDATIONS · MERGED</div><h2 class="section-title">What's worth doing next</h2></div><span class="tag">${items.length} LEAD${items.length===1?'':'S'}</span></div>
-    ${error?`<p class="secondary">Recommendations unavailable: ${esc(error)}</p>`:`<div class="review-list">${rows}</div>
+    ${error?`<p class="secondary">Recommendations unavailable: ${esc(error)}</p>`:`<div class="review-list">${rows}</div>${trialCardHtml(policy,trial,trialLedgerText(trial))}
     <div class="subline" id="policy-compare">${esc(policy?.note??'Policy comparison unavailable.')}</div>`}
-    <p class="small muted">Recommendations merge due pattern reviews, the weakest sample-gated patterns, the plateau protocol and one estimated-payoff line (reads your verified benchmark pace and medians). Estimates are arithmetic on your own history, not predictions of what training will achieve. The policy line only chooses which surface to emphasize. Practice runs now record the launch context (surface · emphasized policy · cell) as provenance (F20/F21) — that history is observational: no randomized arm yet, so nothing here may claim one policy beats another (${esc(policy?.assignment ?? '')}).</p>`;
+    <p class="small muted">Recommendations merge due pattern reviews, the weakest sample-gated patterns, the plateau protocol and one estimated-payoff line (reads your verified benchmark pace and medians). Estimates are arithmetic on your own history, not predictions of what training will achieve. The policy line only chooses which surface to emphasize: by default the seeded assignment, or the joined randomized crossover trial's current window (flag override still wins; ${esc(String(TRIAL_WINDOW_DAYS))}-day treated windows, every ${esc(String(TRIAL_CYCLE_WINDOWS))}rd window a holdout). Practice runs record the launch context (surface · emphasized policy · cell) as provenance (F20/F21); inside a treatment window recommendation drills recruit the emphasized policy exactly, and the trial ledger persists that pairing with its caveats — a one-learner crossover, never a claim that a policy is better (${esc(policy?.assignment ?? '')}).</p>`;
+  const persistTrial=value=>{try{if(value===null)localStorage.removeItem(TRIAL_STORAGE_KEY);else localStorage.setItem(TRIAL_STORAGE_KEY,value);}catch{}renderRecommendations();};
+  root.querySelector('[data-trial-join]')?.addEventListener('click',()=>{
+    persistTrial(serializeTrial(createPolicyTrial({seed:deviceSeed(),startedAt:new Date().toISOString()})));
+  });
+  root.querySelector('[data-trial-leave]')?.addEventListener('click',()=>persistTrial(null));
   root.querySelectorAll('[data-rec-drill]').forEach(btn=>btn.addEventListener('click',()=>{
     const item=items.find(x=>x.launch.type==='drill'&&((x.launch.cell.id??x.launch.cell.label)===btn.dataset.recDrill||x.launch.cell.label===btn.dataset.recDrill));
     if(!item)return;
     const cell=skillCellFromId(item.launch.cell.id)??item.launch.cell;
-    // F21: record the emphasized-policy context so treatment runs are attributable later.
+    // F21: record the emphasized-policy context so treatment runs are attributable later. During a
+    // trial holdout window the emphasis is null, so recommendation drills launch unattributed —
+    // the honest contrast the trial's ledger counts separately.
     startGame({drill:{...cell,tier:drillTierForRecord(item.launch.record)},provenance:{surface:'recommendations',cellId:cell.id??cell.label,policyId:policy?.emphasizedPolicyId??null}});
   }));
 }
@@ -921,11 +959,12 @@ function cellDetailHtml(c,h){
   if(!c)return '<p class="secondary">Select a cell (arrow keys + Enter, or click) to see details and start a drill.</p>';
   const ci=c.ci?`${fmt(c.ci.low)} – ${fmt(c.ci.high)}`:`needs ≥6 samples (has ${c.count})`;
   const rel=c.ratio===null||c.count<MIN_CELL_SAMPLES?'—':`${c.ratio>=1?'+':'−'}${Math.round(Math.abs(c.ratio-1)*100)}% vs ${opNames[h.op].toLowerCase()} median (${fmt(h.opMedianMs)})`;
+  const mastery=c.mastery?`${Math.round(c.mastery.estimate*100)}% (95% interval ${Math.round(c.mastery.ci.low*100)}–${Math.round(c.mastery.ci.high*100)}%, n=${c.mastery.samples})`:'—';
   return `<h3 class="cell-title">${esc(c.label)}</h3>
-    <dl class="cell-stats"><dt>Solved</dt><dd>${c.count} <span class="muted">(${esc(c.evidence)})</span></dd><dt>Median</dt><dd>${fmt(c.medianMs)}</dd><dt>95% CI of median</dt><dd>${ci}</dd><dt>Smoothed relative speed</dt><dd>${rel}</dd><dt>Not clean entry</dt><dd>${c.flawedShare===null?'—':Math.round(100*c.flawedShare)+'%'}</dd></dl>
+    <dl class="cell-stats"><dt>Solved</dt><dd>${c.count} <span class="muted">(${esc(c.evidence)})</span></dd><dt>Median</dt><dd>${fmt(c.medianMs)}</dd><dt>95% CI of median</dt><dd>${ci}</dd><dt>Smoothed relative speed</dt><dd>${rel}</dd><dt>Not clean entry</dt><dd>${c.flawedShare===null?'—':Math.round(100*c.flawedShare)+'%'}</dd><dt>Mastery ≤2s</dt><dd>${mastery}</dd></dl>
     <button type="button" class="primary-btn" id="drill-cell">Drill ${esc(c.label)} · 60s practice ↗</button>
     <button type="button" class="secondary-btn" id="flash-cell">Automaticity drill · flash 60s ↗</button>
-    <p class="small muted">Drills only show problems from this cell and are saved as practice. They never count toward benchmark scores, and they're excluded from the benchmark-only heatmap. A finished 60-second drill records a spaced review for this pattern (speed and wrong-attempt based), and later drills auto-tune: a lapse narrows to the easier half of the cell, four consecutive fast runs stretch into the neighboring band (Train tab → due reviews). The automaticity drill adds a 2-second flash cap per question and does not feed that ladder.</p>`;
+    <p class="small muted">Drills only show problems from this cell and are saved as practice. They never count toward benchmark scores, and they're excluded from the benchmark-only heatmap. A finished 60-second drill records a spaced review for this pattern (speed and wrong-attempt based), and later drills auto-tune: a lapse narrows to the easier half of the cell, four consecutive fast runs stretch into the neighboring band (Train tab → due reviews). The automaticity drill adds a 2-second flash cap per question and does not feed that ladder. Mastery is a Jeffreys-posterior share of recorded solves that are correct and at or under the 2 s line in the scope above; the interval is not calibrated against scores — a description of this cell's record, not a prediction.</p>`;
 }
 function renderHeatmap(){
   const root=$('#heatmap-root'); if(!root)return;

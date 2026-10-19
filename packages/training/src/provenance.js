@@ -72,8 +72,9 @@ function treatmentRun(s) {
  * treatment — deterministic and reproducible from the stored record set. `observedDelta` is the
  * raw benchmark score change; everything else that changed between those two runs rides in it.
  *
- * Every row carries the caveat: observational pairing, no randomized arm, no holdout, tiny n —
- * this is a ledger that makes calibration *possible*, not evidence that any policy works.
+ * Every row carries the caveat: observational pairing, no randomized arm in this ledger (the
+ * opt-in policy trial holds the assigned arms and holdouts), tiny n — this is a ledger that makes
+ * calibration *possible*, not evidence that any policy works.
  */
 export function treatmentOutcomes(sessions, { minTreatmentSeconds = 30, maxPairs = 12, minTreatmentRuns = 1 } = {}) {
   if (!Array.isArray(sessions)) return { pairs: [], emptyNote: 'No sessions to pair yet.', caveats: TREATMENT_CAVEATS };
@@ -121,7 +122,7 @@ export function treatmentOutcomes(sessions, { minTreatmentSeconds = 30, maxPairs
       unattributedRuns: unattributed,
       rows,
       note: rows.length
-        ? `Observational pairing over ${rows[0].runs} provenance-tagged ${minTreatmentSeconds}s+ run(s): the benchmark change also includes everything else that happened between the two runs. No randomized arm, no holdout — diagnostic ledger only.`
+        ? `Observational pairing over ${rows[0].runs} provenance-tagged ${minTreatmentSeconds}s+ run(s): the benchmark change also includes everything else that happened between the two runs. No randomized arm in this ledger — the opt-in policy trial holds the assigned arms and the gate-gated comparison.`
         : 'Only unattributed tagged practice between these two runs — consistent practice, no policy to pair it with.',
     });
   }
@@ -136,6 +137,6 @@ export function treatmentOutcomes(sessions, { minTreatmentSeconds = 30, maxPairs
 const TREATMENT_CAVEATS = Object.freeze([
   'treatmentOutcomes pairs provenance-tagged practice with the surrounding benchmark runs; policy-attributed rows appear only where tagged practice carries a policyId, and tagged-but-unattributed practice is counted separately, never folded into a policy row',
   'predicted deltas recompute the impact heuristic on the pre-treatment history prefix (share \u00d7 excess, F20) and stay estimates',
-  'no causal claim: emphasis-context tagging is not a randomized experiment (M4/F37 adds assigned arms and holdouts)',
+  'no causal claim: emphasis-context tagging is not itself a randomized experiment — the opt-in policy trial (trial-window.js/trial.js) is where assigned arms and holdouts live, and only its gate-gated numbers exist as comparison evidence',
   'observational pairing: the observed benchmark change also includes everything else between the two runs',
 ]);

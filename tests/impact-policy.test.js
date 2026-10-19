@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { benchmarkMeanResponseMs, estimateScoreImpact, impactCandidates, calibrateImpactModel, IMPACT_NOTE, MAX_EST_DELTA, MIN_MEAN_RESPONSE_MS } from '../packages/training/src/impact.js';
+import { benchmarkMeanResponseMs, estimateScoreImpact, impactCandidates, calibrateImpactModel, validateImpactCategoryStep, IMPACT_NOTE, MAX_EST_DELTA, MIN_MEAN_RESPONSE_MS } from '../packages/training/src/impact.js';
 import { buildRecommendations } from '../packages/training/src/recommendations.js';
 import { resolvePolicyFlag, projectPolicy, comparePolicies, DEFAULT_POLICY_ID, TRAINING_POLICIES } from '../packages/training/src/policies.js';
 import { makeQuestion } from '../packages/core/src/generator.js';
@@ -129,8 +129,7 @@ test('buildRecommendations: merged, evidence-first, deterministic and no fabrica
   assert.throws(() => buildRecommendations({ sessions: [], reviews: [], now: 'nonsense' }), RangeError);
 });
 
-test('policies: flagged comparison is allow-listed, deterministic, seeded only for placement', () => {
-  assert.deepEqual(TRAINING_POLICIES.map(p => p.id), ['op-adaptive', 'cell-gauntlet', 'automaticity']);
+test('policies: flagged comparison is allow-listed, deterministic, seeded only for placement', () => {  assert.deepEqual(TRAINING_POLICIES.map(p => p.id), ['op-adaptive', 'cell-gauntlet', 'automaticity']);
   assert.equal(DEFAULT_POLICY_ID, 'op-adaptive');
   assert.equal(resolvePolicyFlag('nonsense').valid, false);
   assert.equal(resolvePolicyFlag('nonsense').value, DEFAULT_POLICY_ID);
@@ -159,4 +158,70 @@ test('policies: flagged comparison is allow-listed, deterministic, seeded only f
   assert.equal(pinned.emphasizedPolicyId, 'automaticity');
   assert.equal(pinned.flagOverride, true);
   assert.throws(() => comparePolicies(history, {}), RangeError);
+});
+
+/* ---- F20 close-out: the share × excess category step is now recomputed from raw events ---- */
+
+const VAL_MUL_SLOW = { op: 'mul', a: 7, b: 40, ms: 1400, n: 9 };
+const VAL_MUL_FAST = { op: 'mul', a: 10, b: 90, ms: 800, n: 9 };
+const VAL_ADD_FAST = { op: 'add', a: 20, b: 30, ms: 400, n: 12 };
+
+test('validateImpactCategoryStep: recomputes every row from the raw events; hand-computed exact values', () => {
+  // Hand computation (exact):
+  //   meanResponse = (1400·9 + 800·9 + 400·12)/30 = 820 ms
+  //   mul op median = (1400+800)/2 = 1100; add median = 400
+  //   crossOp mean  = (1100·18 + 400·12)/30 = 820
+  //   op row (mul): excess = 280, share = 0.6, estDelta = 120000/652 − 120000/820 = 37.7 → capped at 30
+  //   cell row (7×40–49): excess = 1400 − 1100 = 300, share = 0.3, estDelta = 120000/730 − 120000/820 = 18.0
+  const history = [run(0, [VAL_MUL_SLOW, VAL_MUL_FAST, VAL_ADD_FAST])];
+  const validation = validateImpactCategoryStep(history);
+  assert.equal(validation.feasible, true);
+  assert.equal(validation.checked, 2, 'one op row and one gated cell row');
+  assert.deepEqual(validation.mismatches, []);
+  const candidates = impactCandidates(history);
+  const opRow = candidates.candidates.find(c => c.kind === 'op' && c.op === 'mul');
+  const cellRow = candidates.candidates.find(c => c.kind === 'cell');
+  assert.equal(validation.crossOpMean, 820);
+  assert.equal(cellRow.estDelta, 18, 'the uncapped cell estimate is exactly 18.0');
+  assert.equal(opRow.estDelta, MAX_EST_DELTA, 'the op row saturates the cap, not more');
+  assert.equal(opRow.excessMs, 280);
+  assert.equal(cellRow.excessMs, 300);
+  assert.equal(cellRow.share, 0.3);
+  // Every claim row must carry recomputed numbers matching the emitted ones.
+  for (const row of validation.rows) {
+    for (const [claim, expected, observed] of row.claims) {
+      assert.ok(Number.isFinite(expected) || expected === null, `${row.id}.${claim}: recomputation produced a value`);
+      if (Number.isFinite(expected) && Number.isFinite(observed)) assert.ok(Math.abs(expected - observed) < 1e-9, `${row.id}.${claim}: ${expected} vs ${observed}`);
+      else assert.equal(expected, observed, `${row.id}.${claim}`);
+    }
+  }
+});
+
+test('validateImpactCategoryStep: degenerate and practice-only histories return infeasible, never numbers', () => {
+  const none = validateImpactCategoryStep([]);
+  assert.equal(none.feasible, false);
+  assert.equal(none.checked, 0);
+  assert.ok(none.note, 'still names why in a note');
+  const practiceOnly = [{ ...run(0, [VAL_MUL_SLOW]), benchmark: false, mode: 'drill' }];
+  const empty2 = validateImpactCategoryStep(practiceOnly);
+  assert.equal(empty2.feasible, false);
+});
+
+test('heatmap cells carry the probabilistic mastery posterior (F20 surface wiring)', async () => {
+  const { buildHeatmap } = await import('../packages/analytics/src/heatmap.js');
+  const history = [run(0, [
+    { op: 'mul', a: 7, b: 40, ms: 1800, n: 5 },   // fast-and-correct solves (≤ 2000 ms)
+    { op: 'mul', a: 7, b: 45, ms: 2600, n: 3 },   // slow solves
+  ])];
+  const heatmap = buildHeatmap(history, 'mul', { scope: 'benchmark' });
+  const masteredCell = heatmap.cells.flat().find(c => c.rowRange[0] === 7 && c.colRange[0] === 40);
+  assert.ok(masteredCell.mastery, 'the mastery posterior rides every cell');
+  assert.equal(masteredCell.mastery.samples, 8, 'the cell row sees all 8 solves');
+  assert.equal(masteredCell.mastery.passes, 5);
+  assert.equal(masteredCell.mastery.estimate, 0.6111, 'Jeffreys posterior mean (5.5/9), not the raw share');
+  assert.ok(masteredCell.mastery.ci.high < 0.9 && masteredCell.mastery.ci.low > 0.2, `wide on thin evidence: ${masteredCell.mastery.ci.low}–${masteredCell.mastery.ci.high}`);
+  assert.equal(masteredCell.mastery.calibrated, false);
+  const untouched = heatmap.cells.flat().find(c => c.rowRange[0] === 12);
+  assert.equal(untouched.mastery.samples, 0);
+  assert.equal(untouched.mastery.estimate, 0.5, 'empty cells show the prior, never a fabricated number');
 });

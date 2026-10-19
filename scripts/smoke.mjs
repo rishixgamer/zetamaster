@@ -445,6 +445,25 @@ async function run(font) {
       return 'replay row count ' + rp.rows + '; replay run saved as practice';
     });
 
+    await step('F21: randomized policy trial joins and leaves from the Train panel', async () => {
+      await ev(cdp, setNav, 'train');
+      await waitUntil(cdp, () => document.querySelector('#recs-panel [data-trial-join]'), { label: 'trial join button' });
+      await ev(cdp, click, '[data-trial-join]');
+      await waitUntil(cdp, () => document.querySelector('#recs-panel [data-trial-leave]'), { label: 'trial leave button' });
+      const state = await ev(cdp, () => {
+        const joinedRaw = localStorage.getItem('zetamaster-policy-trial');
+        return { joinedRaw, note: document.querySelector('#policy-compare')?.textContent ?? '' };
+      });
+      assert(state.joinedRaw, 'joining persists the trial blob');
+      const trial = JSON.parse(state.joinedRaw);
+      assert(trial.version === 'policy-trial-v1' && trial.id && trial.policyIdA !== trial.policyIdB, 'stored trial carries a versioned id and two policies: ' + state.joinedRaw);
+      assert(/Randomized crossover|holdout window/.test(state.note), 'the policy line names the trial state: ' + state.note);
+      await ev(cdp, click, '[data-trial-leave]');
+      await waitUntil(cdp, () => document.querySelector('#recs-panel [data-trial-join]'), { label: 'join button back after leave' });
+      assert((await ev(cdp, () => localStorage.getItem('zetamaster-policy-trial'))) === null, 'leaving must clear the stored trial');
+      return 'joined → ' + state.joinedRaw.slice(0, 80) + '…, left clean';
+    });
+
     await step('F26: Academy guided rehearsal completes the pinned addition example', async () => {
       await ev(cdp, setNav, 'academy');
       const academy = await ev(cdp, academyState);

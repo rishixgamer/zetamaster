@@ -1,4 +1,5 @@
 import { mean } from '../../analytics/src/stats.js';
+import { buildHeatmap } from '../../analytics/src/heatmap.js';
 import { skillRollups, SKILL_MIN_SAMPLES, SKILL_STABLE_SAMPLES } from './skills.js';
 
 /**
@@ -19,9 +20,12 @@ import { skillRollups, SKILL_MIN_SAMPLES, SKILL_STABLE_SAMPLES } from './skills.
  * extra points per run. This is an arithmetic consequence of the inputs, NOT a validated
  * prediction of what practice will achieve: it assumes freed seconds convert into correct answers
  * at your average pace, and it ignores accuracy, fatigue and whether cell practice transfers to
- * mixed runs — the calibration functions here test exactly what they can (`calibrateImpactModel`
- * validates the questions-per-run basis against realized run scores), and the category step
- * stays an unvalidated extension until the M4 experiment machinery records treatment history.
+ * mixed runs. What the validation here does cover: `calibrateImpactModel` validates the
+ * questions-per-run basis against realized run scores, `validateImpactCategoryStep` recomputes
+ * the share × excess category decomposition end-to-end from the raw benchmark events (exact
+ * fixture values pinned in tests), and the randomized crossover trial (packages/training/src/
+ * trial.js, F21/M4-F37) records per-policy outcome rows — the *training gain* the heuristic
+ * implies stays an estimate everywhere; no result claims ride on any of it.
  */
 
 /** Point cap: a single category can never claim more than this, whatever degenerate history says. */
@@ -149,6 +153,7 @@ export function impactCandidates(sessions, { meanResponseMs = null, minSamples =
  * experiments that nothing has collected yet. Deterministic; gate and abstain above the minimum.
  */
 export function calibrateImpactModel(sessions, { budgetMs = 120000, minRuns = 6, minSolvedPerRun = 5 } = {}) {
+
   const runs = (Array.isArray(sessions) ? sessions : [])
     .filter(s => s && s.benchmark === true && s.mode === 'benchmark' && Array.isArray(s.events))
     .slice()
@@ -177,6 +182,83 @@ export function calibrateImpactModel(sessions, { budgetMs = 120000, minRuns = 6,
     meanAbsError: meanAbsError === null ? null : Math.round(meanAbsError * 100) / 100,
     meanAbsPct: meanAbsPct === null ? null : Math.round(meanAbsPct * 1000) / 1000,
     withinTenPctShare: withinTenPct === null ? null : Math.round(withinTenPct * 100) / 100,
-    note: 'Validates the arithmetic that converts average pace into points per run (budget ÷ mean solve time) on realized benchmark runs. Deliberately same-data: it checks the formula, not the future — no claim of predicting behavior after training. The category step of the heuristic (share × excess) remains unvalidated: no treatment history exists.',
+    note: 'Validates the arithmetic that converts average pace into points per run (budget ÷ mean solve time) on realized benchmark runs. Deliberately same-data: it checks the formula, not the future — no claim of predicting behavior after training. The category step (share × excess) is arithmetic-validated by validateImpactCategoryStep; the TRAINING GAIN it implies remains an estimate: the randomized crossover trial (trial.js) records outcomes, never proof a policy works.',
+  };
+}
+
+/**
+ * Automated per-category validation of the share × excess step (F20 close-out). Everything the
+ * candidate rows carry is recomputed directly from the raw benchmark events — per-operation
+ * medians and counts through an independent buildHeatmap call, the weighted cross-operation
+ * reference, each candidate's excess, share and estDelta through the public `estimateScoreImpact`
+ * — and compared against the produced rows. A mismatch is reported per row per claim, never
+ * silently repaired. This pins the DECOMPOSITION (median → reference → excess → share → estDelta)
+ * end-to-end; the heuristic's training-gain meaning stays exactly what the note above says.
+ * Deterministic; degenerate histories return feasible:false with the empty note from candidates.
+ */
+export function validateImpactCategoryStep(sessions, { budgetMs = 120000, minSamples = SKILL_MIN_SAMPLES, stableSamples = SKILL_STABLE_SAMPLES } = {}) {
+  const { meanResponseMs: avg, totalObs, candidates, emptyNote } = impactCandidates(sessions, { meanResponseMs: null, minSamples, stableSamples });
+  if (!avg) return { feasible: false, checked: 0, mismatches: [], note: emptyNote };
+  // Independent recomputation pass: raw events → per-op medians/counts → cross-op reference → cells.
+  const recomputedOp = {};
+  const recomputedCells = new Map();
+  for (const op of ['add', 'sub', 'mul', 'div']) {
+    const heatmap = buildHeatmap(sessions, op, { scope: 'benchmark' });
+    recomputedOp[op] = { medianMs: heatmap.opMedianMs, count: heatmap.observations };
+    for (const cell of heatmap.cells.flat()) if (cell.count > 0) recomputedCells.set(cell.key, cell);
+  }
+  const ops = Object.values(recomputedOp).filter(x => x.count > 0);
+  const pooledCount = ops.reduce((a, x) => a + x.count, 0);
+  if (!pooledCount) return { feasible: false, checked: 0, mismatches: [], note: 'No solved benchmark questions yet.' };
+  const crossOpMean = ops.reduce((a, x) => a + x.medianMs * x.count, 0) / pooledCount;
+  const mismatches = [];
+  const rows = [];
+  const near = (x, y) => Math.abs(x - y) <= 1e-9 * Math.max(1, Math.abs(x), Math.abs(y));
+  for (const candidate of candidates) {
+    const row = { kind: candidate.kind, id: candidate.id, claims: [] };
+    let found = null, excessMs = null;
+    if (candidate.kind === 'op') {
+      found = recomputedOp[candidate.op];
+      excessMs = found.medianMs - crossOpMean;
+      row.claims = [
+        ['medianMs', found.medianMs, candidate.medianMs],
+        ['referenceMs', crossOpMean, candidate.referenceMs],
+        ['count', found.count, candidate.count],
+        ['excessMs', excessMs, candidate.excessMs],
+        ['share', Math.min(0.9, found.count / pooledCount), candidate.share],
+        ['estDelta', estimateScoreImpact({ meanResponseMs: avg, budgetMs, share: Math.min(0.9, found.count / pooledCount), excessMs })?.estDelta ?? null, candidate.estDelta],
+      ];
+    } else {
+      found = recomputedCells.get(candidate.id);
+      if (found) {
+        excessMs = found.medianMs - recomputedOp[candidate.op]?.medianMs;
+        const shareRaw = found.count / pooledCount;
+        row.claims = [
+          ['medianMs', found.medianMs, candidate.medianMs],
+          ['referenceMs', recomputedOp[candidate.op]?.medianMs, candidate.referenceMs],
+          ['count', found.count, candidate.count],
+          ['excessMs', excessMs, candidate.excessMs],
+          ['share', estimateScoreImpact({ meanResponseMs: avg, budgetMs, share: shareRaw, excessMs })?.share ?? null, candidate.share],
+          ['estDelta', estimateScoreImpact({ meanResponseMs: avg, budgetMs, share: shareRaw, excessMs })?.estDelta ?? null, candidate.estDelta],
+        ];
+      } else row.claims = [['row-missing', null, candidate.id]];
+    }
+    for (const [claim, expected, observed] of row.claims) {
+      const ok = Number.isFinite(expected) && Number.isFinite(observed) ? near(expected, observed) : expected === observed;
+      if (!ok) mismatches.push({ kind: candidate.kind, id: candidate.id, claim, expected, observed });
+    }
+    rows.push(row);
+  }
+  return {
+    feasible: candidates.length > 0 && mismatches.length === 0,
+    meanResponseMs: avg,
+    totalObs,
+    crossOpMean: Math.round(crossOpMean * 1000) / 1000,
+    checked: candidates.length,
+    rows,
+    mismatches,
+    note: candidates.length
+      ? 'Recomputes every candidate row (operation and cell) from the raw benchmark events through an independent pass: median, reference, excess, share and estDelta each checked. Validates the decomposition arithmetic only — what the estimates mean for future training gains stays subject to the calibrateImpactModel and trial caveats.'
+      : emptyNote,
   };
 }

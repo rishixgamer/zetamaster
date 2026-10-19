@@ -48,7 +48,7 @@ Current code: seeded generator, inverse questions, immutable benchmark config, l
 
 **Gate:** Each lesson has an explanation test, a novel-problem test and an adaptive schedule integration test.
 
-**Delivered since plan:** F23–F28 rehearse all 12 cards (division included — F26) in guided/partial/independent modes with seeded transfer and drill hand-off; F27's seeded duel compares the only two overlapping card pairs (addition, division) arm-by-arm with an honest tiny-n tally; F29 ships the consent-gated coach verifier (device-local opt-in, deterministic claim checking, no grading, no network transport). Pinned in `tests/guides.test.js`, `tests/strategies.test.js`, `tests/duel-ui.test.js`, `tests/duels.test.js`, `tests/coach.test.js`, `tests/academy-ui.test.js`. Lesson-level strategy quizzes, per-card progress ladders and an actual AI transport remain open items for this milestone.
+**Delivered since plan:** F23–F28 rehearse all 12 cards (division included — F26) in guided/partial/independent modes with seeded transfer and drill hand-off; F27's seeded duel compares the only two overlapping card pairs (addition, division) arm-by-arm with an honest tiny-n tally; F29 ships the consent-gated coach verifier (device-local opt-in, deterministic claim checking, no grading, no network transport). Pinned in `tests/guides.test.js`, `tests/strategies.test.js`, `tests/duel-ui.test.js`, `tests/duels.test.js`, `tests/coach.test.js`, `tests/academy-ui.test.js`. Optional further depth on these surfaces (an LLM transport for F29, additional technique cards) requires the deliberate @AGENTS.md decisions (privacy review, explicit opt-in) and stays future work by design.
 
 ## M4 — Performance laboratory
 
@@ -62,7 +62,7 @@ Current code: seeded generator, inverse questions, immutable benchmark config, l
 
 **Gate:** Evaluation protocol prevents spurious precision and misleading causal claims.
 
-**Substrate note (pre-M4):** run provenance now exists (training/provenance.js, F20/F21): practice runs record the launch surface, emphasized policy and drilled cell, and `treatmentOutcomes` computes observational predicted-vs-observed pairs around valid benchmarks on the pre-treatment history prefix. The A/B machinery this milestone assigns — randomized arms, holdout windows, signed-off uncertainty — is still open; provenance is a context ledger, never causal evidence.
+**M4/F37 close-out (F20/F21 randomized arms):** the crossover trial is now real: `training/trial-window.js` + `training/trial.js` implement seeded-balanced randomized policy arms (two treated windows, then a holdout window), the opt-in Train-panel card for joining/leaving, and an outcome ledger (`trialOutcomes`/`summarizeTrialOutcomes`) whose comparison reports an exact permutation p on the pooled benchmark deltas — but only at or above the ≥4 attributed-windows-per-policy gate, only as a one-learner diagnostic, with the carryover caveat on every row. The provenance ledger below remains what it was: context, never causal evidence on its own.
 
 ## M5 — Community, optional services
 

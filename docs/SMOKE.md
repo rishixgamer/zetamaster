@@ -39,6 +39,7 @@ buttons, input events) — nothing calls the app's internals directly:
 | F02/F10 | valid practice-only custom run (addition axis 3–5) records solved questions with tag arrays and engine-3 telemetry |
 | reload | entry settings, last-used ranges and saved history survive a fresh document |
 | F04 | sequence viewer renders history; replay of the slowest questions launches as labeled practice (`benchmark: false`) |
+| F21 | randomized policy trial joins from the Train panel (seeded id stored), the policy line names the trial state, and leaving clears it |
 | F26 | Academy rehearsal completes the pinned `68 + 50 = 118 = 115` card example incl. wrong-answer retry; drill hand-off runs as practice; transfer draw shows its seed |
 | F27/F29 | strategy duel panel renders; coach verifier consent defaults OFF |
 | M6 | Quant view renders its panels after the `$` fix |

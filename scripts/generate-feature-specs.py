@@ -11,6 +11,6 @@ lines=['# Complete Feature Matrix (F01–F55)','',"The 55 entries below correspo
 for x in features:
     assert x['status'] in ('implemented','partial','planned')
     lines.append(f"| {x['id']} | {x['title']} | {x['status']} | `{x['owner']}` | {x['acceptance'][0]} |")
-lines += ['', 'See `specs/features.json` for machine-readable records. Convert each partial/planned entry into a tracked GitHub issue as needed. No placeholder UI buttons are presented as working functionality.', '']
+lines += ['', 'See `specs/features.json` for machine-readable records. Any future `partial`/`planned` entry should become a tracked GitHub issue so it cannot silently masquerade as done. No placeholder UI buttons are presented as working functionality.', '']
 (root/'docs/FEATURE_MATRIX.md').write_text('\n'.join(lines))
 print('Regenerated',len(features),'feature rows')

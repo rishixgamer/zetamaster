@@ -2,6 +2,7 @@ import { median, medianCI } from './stats.js';
 
 export { medianCI };
 import { classifyError } from './errors.js';
+import { AUTOMATICITY_MS, masteryPosterior } from './skill-model.js';
 
 /** Legacy flat aggregation: one entry per exact operand pair. */
 export function aggregateHeatmap(sessions) {
@@ -74,6 +75,7 @@ export function buildHeatmap(sessions, op, { scope = 'benchmark' } = {}) {
       ratio: smoothedMs !== null && opMedianMs ? smoothedMs/opMedianMs : null,
       flawedShare: xs.length ? flawed/xs.length : null,
       evidence: evidenceFor(xs.length),
+      mastery: masteryPosterior(xs.filter(e => e.correct === true && e.responseMs <= AUTOMATICITY_MS).length, xs.length),
     };
   }));
   return { ...layout, scope, observations: events.length, opMedianMs, cells };

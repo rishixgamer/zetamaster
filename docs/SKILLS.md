@@ -292,8 +292,10 @@ medians and the estimate, so the arithmetic is reproducible from the row alone.
   compares the predicted `budgetMs / meanResponse` against the run's own correct-answer count,
   reporting absolute-mean error and the ≤10% hit share, gated at ≥ 6 runs with per-run minimum
   solves. Deliberately same-data: it validates the pace→points arithmetic, not the future. The
-  category step (`share × excess`) remains **unvalidated** — measuring it needs recorded
-  treatment history (M4 experiments, F37).
+  category step (`share × excess`) is arithmetic-validated by `validateImpactCategoryStep`
+  (every candidate row recomputed from the raw benchmark events, exact values pinned in tests);
+  what stays unvalidated is the *training gain* the formula implies — estimation everywhere,
+  measured only through the trial ledger below.
 - **Merged recommendations** (`buildRecommendations`, F38): one deterministic list fusing the
   existing evidence surfaces — due spaced reviews first, then weakest sample-gated cells, then
   the plateau branch (a protocol item), then a top estimated-payoff row, and a coverage "build
@@ -303,8 +305,31 @@ medians and the estimate, so the arithmetic is reproducible from the row alone.
   `packages/training/src/policies.js`): three named concentration policies (operation-adaptive
   mix, cell gauntlet rotation, automaticity ladder), each scored by its candidates' summed
   `estDelta`; emphasis is placement only — a seeded balanced A/B (`assignStrategyTrial`) or an
-  allow-listed feature flag, with the note saying plainly that **no outcome tracking exists yet**
-  and nothing can claim one policy is better. Device seed is stable per browser.
+  allow-listed feature flag, with the joined randomized crossover trial adding randomized
+  windows above it (see the trial entry in this list). Device seed is stable per browser.
+  Emphasized placement stays a context variable, never a verdict.
+- **Randomized crossover policy trial, opt-in** (F21/M4-F37 close-out;
+  `trial-window.js` + `trial.js`): joining flips the Train-panel emphasis into a seeded window
+  cycle — two 3-day treatment windows that enact the two policies in randomized order (balanced by
+  the device seed across devices), then a 3-day **holdout window** where nothing is emphasized and
+  recommendation drills launch untagged. Consecutive valid benchmarks are paired like
+  `treatmentOutcomes`; a practice run counts as treatment only when its provenance names the
+  policy the trial emphasized at that run's start; everything else (holdout, other surfaces,
+  mismatched policies, pre-enrollment records) is counted as context, never attributed.
+  Per-policy summaries carry a Wilson interval on the improving-window share; past the
+  ≥4-attributed-windows-per-policy gate the between-policy comparison reports an **exact
+  permutation p** (full enumeration of the pooled benchmark deltas — no asymptotics, refused
+  rather than approximated beyond the guards). Every number ships with the caveat list: crossover
+  carryover is real and unmodeled, one device means a within-learner comparison, observed deltas
+  include everything else that changed, and below the gate NO comparison exists at all. The gate
+  lets a number through, not a verdict.
+- **Probabilistic mastery model** (F20 close-out; `analytics/src/skill-model.js`): per heatmap
+  cell, a Jeffreys Beta(0.5+passes, 0.5+misses) posterior over the share of recorded solves that
+  are correct **and** at or under the shared `AUTOMATICITY_MS` 2000 ms line, with an equal-tailed
+  credible interval from the exact Beta CDF (continued fractions + bisection, closed-form cases
+  pinned in tests). Shown in the heatmap cell detail. Honest limits stated on the panel: the
+  interval describes the *record* (fast-and-correct share), it is not calibrated against
+  realized scores, and thin cells show near-total intervals rather than a verdict.
 
 ## What this slice does not claim
 
@@ -321,8 +346,10 @@ medians and the estimate, so the arithmetic is reproducible from the row alone.
   not ability or mastery; a high share is not an achievement metric and stable evidence ≠ skill.
 - Score-impact estimates are arithmetic on your own recorded medians: they say what closing a gap
   would be worth *if* freed seconds converted to correct answers, which is an assumption, not a
-  measurement; the category step has no calibration and the policy comparison has no outcome
-  tracking, so no ranking of training strategies is supportable yet (F20/F21 remain partial).
+  measurement; the category step is arithmetic-validated but its training-gain meaning stays an
+  estimate, and the trial ledger's outcome numbers stay governed by their gates and caveat list —
+  a one-learner crossover can never establish that a policy is better (F20/F21 claim a protocol,
+  not an efficacy proof).
 - Review outcomes measure speed **and** recorded wrong attempts — nothing more. "Correct" means no
   complete wrong value typed and no wrong Enter submission *before* the solve (engine-3
   `wrongAttempts`, falling back to the counters); a solved question is correct (the engine only
