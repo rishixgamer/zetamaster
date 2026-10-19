@@ -13,6 +13,10 @@ import { createMarketScenario, validateMarketQuote, simulateMarketRound, aggrega
 import { summarizeQuantProgress } from '../../../packages/quant/src/scoring.js';
 
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// DOM helpers: quant-ui is its own presentation module; these mirror main.js's helpers. Before the
+// browser-smoke runner existed nobody noticed their absence — the bare `$` reference threw inside
+// renderQuantUI, which silently aborted main.js's init (no refresh, empty analytics on every load).
+const $ = selector => document.querySelector(selector);
 
 // Local reactive state for interactive cards
 let activeCategory = 'all';

@@ -12,7 +12,8 @@
     "start": "node scripts/serve.mjs",
     "test": "node --test tests/*.test.js",
     "validate": "node scripts/validate.mjs && node scripts/check-links.mjs",
-    "check": "npm run validate && npm test"
+    "check": "npm run validate && npm test",
+    "smoke": "node scripts/smoke.mjs"
   },
   "license": "MIT"
 }
