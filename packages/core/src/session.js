@@ -45,7 +45,7 @@ export class ArithmeticSession {
     // Run provenance (F20/F21): launch-surface/policy context riding on the result as read-only
     // metadata. Dumb passthrough — consumers sanitize (training/provenance.js, storage whitelist);
     // it never touches scoring, timing or benchmark validity.
-    this.provenance = provenance && typeof provenance === 'object' ? provenance : null;
+    this.provenance = provenance && typeof provenance === 'object' && !Array.isArray(provenance) ? provenance : null;
     this.state = 'ready';
     this.events = [];
     this.missedEvents = []; // latency-budget expirations (F31); never counted as solves or scores

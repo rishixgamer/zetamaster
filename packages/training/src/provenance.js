@@ -111,7 +111,7 @@ export function treatmentOutcomes(sessions, { minTreatmentSeconds = 30, maxPairs
         observedDelta: Math.trunc(after.score) - Math.trunc(before.score),
       });
     }
-    rows.sort((a, b) => b.runs - a.runs || a.policyId.localeCompare(b.policyId));
+    rows.sort((a, b) => b.runs - a.runs || (a.policyId < b.policyId ? -1 : a.policyId > b.policyId ? 1 : 0));
     if (rows.length < minTreatmentRuns && unattributed === 0) continue;
     allPairs.push({
       beforeStartedAt: before.startedAt,
@@ -134,7 +134,7 @@ export function treatmentOutcomes(sessions, { minTreatmentSeconds = 30, maxPairs
 }
 
 const TREATMENT_CAVEATS = Object.freeze([
-  'treatmentOutcomes pairs provenance-tagged practice with the surrounding benchmark runs; at least one attributed run per pair reported by policyId',
+  'treatmentOutcomes pairs provenance-tagged practice with the surrounding benchmark runs; policy-attributed rows appear only where tagged practice carries a policyId, and tagged-but-unattributed practice is counted separately, never folded into a policy row',
   'predicted deltas recompute the impact heuristic on the pre-treatment history prefix (share \u00d7 excess, F20) and stay estimates',
   'no causal claim: emphasis-context tagging is not a randomized experiment (M4/F37 adds assigned arms and holdouts)',
   'observational pairing: the observed benchmark change also includes everything else between the two runs',

@@ -232,7 +232,7 @@ const entrySettingsState = () => ({
 const dumpSessions = async () => {
   const db = await import('/packages/storage/src/db.js');
   const [sessions, reviews] = await Promise.all([db.listSessions(), db.listSkillReviews()]);
-  return { count: sessions.length, reviews: reviews.length, sessions: sessions.map(s => ({ mode: s.mode, benchmark: s.benchmark, score: s.score, endedEarly: s.endedEarly, elapsedMs: s.elapsedMs, seed: s.seed, eventCount: (s.events ?? []).length, rulesId: s.rules?.id, tagsOk: (s.events ?? []).every(e => Array.isArray(e.tags)), drillStage: s.drill?.stage ?? null, drillCell: s.drill?.cell ?? null })) };
+  return { count: sessions.length, reviews: reviews.length, sessions: sessions.map(s => ({ mode: s.mode, benchmark: s.benchmark, score: s.score, endedEarly: s.endedEarly, elapsedMs: s.elapsedMs, seed: s.seed, eventCount: (s.events ?? []).length, rulesId: s.rules?.id, tagsOk: (s.events ?? []).every(e => Array.isArray(e.tags)), drillStage: s.drill?.stage ?? null, drillCell: s.drill?.cell ?? null, provenance: s.provenance ? { surface: s.provenance.surface, policyId: s.provenance.policyId ?? null, cellId: s.provenance.cellId ?? null, stage: s.provenance.stage ?? null } : null })) };
 };
 const academyState = () => {
   const opened = document.querySelector('[data-academy-open]');
@@ -470,6 +470,13 @@ async function run(font) {
       assert(g.mode.startsWith('DRILL') && g.mode.includes('PRACTICE'), 'drill mode line: ' + g.mode);
       await ev(cdp, click, '#finish');
       await waitUntil(cdp, () => !document.querySelector('#results').classList.contains('hidden'), { label: 'drill results' });
+      // "Play again" re-launches the same vehicle (drill + provenance context) verbatim (F20/F21).
+      await ev(cdp, click, '#again');
+      await waitUntil(cdp, gameVisible, { label: 'played-again drill' });
+      const g2 = await ev(cdp, gameState);
+      assert(g2.mode.startsWith('DRILL') && g2.mode.includes('PRACTICE'), 'played-again mode line: ' + g2.mode);
+      await ev(cdp, click, '#finish');
+      await waitUntil(cdp, () => !document.querySelector('#results').classList.contains('hidden'), { label: 'played-again results' });
       await ev(cdp, setNav, 'academy');
       // The panel is still open from the previous step; academyToggle switches open/closed.
       // Click the open button until the transfer button is actually present.
@@ -491,6 +498,9 @@ async function run(font) {
       const dump = await ev(cdp, dumpSessions);
       const drill = dump.sessions[0];
       assert(drill.mode === 'drill' && drill.benchmark === false && drill.drillStage === null, 'drill run practice-only: ' + JSON.stringify(drill));
+      assert(drill.provenance && drill.provenance.surface === 'academy' && drill.provenance.policyId === null, 'academy drill carries its honest launch provenance: ' + JSON.stringify(drill.provenance));
+      const again = dump.sessions[1];
+      assert(again.mode === 'drill' && again.provenance?.surface === 'academy', '"play again" must re-launch the same vehicle with its same tag: ' + JSON.stringify(again.provenance));
       return 'drill saved practice; transfer seeded ' + st.seedCode;
     });
 

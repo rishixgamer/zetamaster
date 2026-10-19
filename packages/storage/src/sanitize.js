@@ -137,6 +137,11 @@ export function sanitizeImportedSession(s) {
     ...(s.drill && typeof s.drill === 'object' ? { drill: { cell: safeText(s.drill.cell, 40), op: OPERATIONS.includes(s.drill.op) ? s.drill.op : null } } : {}),
     // Run provenance (F20/F21): whitelist-validated duplicate of the launch context. Malformed
     // provenance is dropped, never repaired — a record with no attributes stays absent.
-    ...(sanitizeProvenance(s.provenance) ? { provenance: sanitizeProvenance(s.provenance) } : {}),
+    ...(revalidatedProvenance(s) ? { provenance: revalidatedProvenance(s) } : {}),
   };
+}
+
+/** Single evaluation point so the same validated record is reused, not re-derived per key. */
+function revalidatedProvenance(s) {
+  return sanitizeProvenance(s?.provenance);
 }

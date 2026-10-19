@@ -68,7 +68,7 @@ let activeGhostTrajectory=null; // Personal-best ghost racing trajectory (F33)
 let calibState={step:'intro',trials:[],index:0,trialStartedAt:0,results:[]}; // Hardware calibration (F40)
 const heatmapState={op:'mul',scope:'benchmark',focus:{row:0,col:0},selected:null};
 let currentSeed='';
-let lastPreset=null;  // last gauntlet/stage launch: "Play again" must re-launch it, not rebuild rules from a payloadless drill
+let lastLaunch=null;  // the full launch vehicle (preset/replay/drill + provenance) as one snapshot, re-launched verbatim by "Play again"
 let lastResult=null;
 // Active speed-interval set (F30): practice pacing state only — never persisted, never scored.
 // `done` counts finished work bouts; `restSinceMs` marks the last work bout's end on the monotonic
@@ -370,7 +370,7 @@ function startGame({ replay=null, drill=null, preset=null, provenance=null }={})
   const seconds=Number($('#duration').value);
   const selected=getOps();
   try {
-    if(preset){rules=preset.rules;drill={...preset.drill};weights=null;lastPreset=preset;}
+    if(preset){rules=preset.rules;drill={...preset.drill};weights=null;}
     else if(mode==='benchmark')rules=BENCHMARK_RULES;
     else if(mode==='adaptive') {const selection=chooseAdaptive(sessions,seconds);rules=selection.rules;weights=selection.weights;}
     else if(mode==='custom')rules=customRulesWithRanges(seconds,selected);
@@ -399,6 +399,10 @@ function startGame({ replay=null, drill=null, preset=null, provenance=null }={})
   // Run provenance (F20/F21): which surface/emphasized policy produced this practice run. Metadata
   // only — sanitized and dropped when malformed, never allowed to block or alter the launch.
   currentProvenance=sanitizeProvenance(provenance);
+  // Snapshot the launch vehicle as one unit: "Play again" must not compose a stale preset (set by
+  // an earlier panel launch) with the provenance of the run that just finished — that composition
+  // mislabeled gauntlet-hand-off benchmarks and stale presets.
+  lastLaunch={preset,replay,drill,provenance:currentProvenance};
   // Ghost racing (F33): enable cumulative pace comparison during replay and practice against personal-best benchmark
   const isPracticeOrReplay=Boolean(replay || drill || preset || mode!=='benchmark');
   if(isPracticeOrReplay){
@@ -1644,11 +1648,11 @@ function bind(){
   $('#finish').addEventListener('click',()=>finishGame(true));
   $('#again').addEventListener('click',()=>{
     showIdle();
-    // "Play again" repeats the same launch, so it carries the same provenance context (drill/panel
-    // paths). A benchmark or replay rebuild doesn't re-tag: replays re-execute an old run.
-    if(lastPreset)startGame({preset:lastPreset,provenance:currentProvenance});
-    else if(currentDrill)startGame({drill:currentDrill,provenance:currentProvenance});
-    else startGame({replay:currentReplay});
+    // "Play again" re-launches the last launch vehicle verbatim (same rules, same seed, same drill,
+    // same provenance context). A benchmark or replay rebuild doesn't re-tag on its own: replays
+    // re-execute an old run, and a mode-picker benchmark launch never carries a treatment tag.
+    if(lastLaunch)startGame(lastLaunch);
+    else startGame();
   });
   $('#analyze-result').addEventListener('click',()=>{showIdle();setView('analytics');});
   $('#open-calibration')?.addEventListener('click',openCalibrationModal);
