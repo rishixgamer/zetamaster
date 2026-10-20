@@ -53,6 +53,16 @@ const fmt = value => Number.isFinite(value) ? (value/1000).toFixed(2)+'s' : '—
 const opNames={add:'Addition',sub:'Subtraction',mul:'Multiplication',div:'Division'};
 const durationFormat = ms => { const seconds=Math.ceil(Math.max(0,ms)/1000);return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`; };
 const getOps=()=>$$('#ops input:checked').map(x=>x.value);
+/**
+ * Session focus (presentation only): while a timed run or its results fill the train view, the
+ * marketing hero, footer and daily-plan rails quiet down so nothing competes with the clock.
+ * 'game' → a run is live; 'results' → the results panel is front; null → idle layout.
+ * Never touches scoring, timing or the session state machine.
+ */
+function setSessionFocus(state){
+  document.body.classList.toggle('in-game',state==='game');
+  document.body.classList.toggle('in-results',state==='results');
+}
 let sessions=[];
 let skillReviews=[];   // persisted per-skill spaced-repetition records (F19)
 let dailyPlanRecords=[]; // persisted per-day plan completion (F34)
@@ -452,6 +462,8 @@ function startGame({ replay=null, drill=null, preset=null, provenance=null }={})
   currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.cell??drill.id??drill.key,label:drill.label,tier:drill.tier??DEFAULT_DRILL_TIER,stage:drill.stage}:null,provenance:currentProvenance});
   currentSession.start();
   $('#idle-layout').classList.add('hidden');$('#top-metrics').classList.add('hidden');$('#results').classList.add('hidden');$('#game').classList.remove('hidden');
+  setSessionFocus('game'); // focused run presentation; restored by showIdle/finishGame paths
+  window.scrollTo({top:0,behavior:'auto'});
   $('#game-mode').textContent=mode==='benchmark'?'STANDARD BENCHMARK':mode==='drill'?(drill?.stage==='probe'?`TRANSFER PROBE · ${rules.label} · PRACTICE`:drill?.stage==='flash'?`FLASH · ${rules.label} · PRACTICE`:`DRILL · ${rules.label} · PRACTICE`):`${mode.toUpperCase()} PRACTICE`;
   $('#game-score').innerHTML='0 <small>correct</small>';
   $('#answer').value='';
@@ -505,7 +517,16 @@ function renderGhostPace(remainingMs) {
 }
 function updateQuestion() {
   const q=currentSession.current;
-  $('#problem').textContent=q.expression ?? `${q.left} ${q.symbol} ${q.right}`;
+  const problemEl=$('#problem');
+  problemEl.textContent=q.expression ?? `${q.left} ${q.symbol} ${q.right}`;
+  // Ultra-subtle settle on each new problem, skipped (cheap guard) while reduced motion is on:
+  // re-trigger by restarting the animation cycle only when the element isn't animating already.
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+    const again=problemEl.classList.contains('settle');
+    if(again)problemEl.classList.remove('settle');
+    void problemEl.offsetWidth;
+    problemEl.classList.add('settle');
+  }
   $('#game-score').innerHTML=`${currentSession.score} <small>correct</small>`;
   renderGhostPace();
 }
@@ -515,6 +536,8 @@ function renderTick() {
   // A flash drill (F31) expires slow questions: clear the stale answer and show the next problem.
   if(currentSession.consumeExpiry()){$('#answer').value='';updateQuestion();}
   $('#timer').textContent=durationFormat(ms);
+  // Last-ten-seconds urgency (presentation only): a color state on the clock, no sound, no score.
+  $('#timer').classList.toggle('timer-urgent',ms<=10000);
   $('#time-fill').style.width=(100*ms/(currentSession.rules.durationSeconds*1000)).toFixed(2)+'%';
   renderGhostPace(ms);
   if(currentSession.state==='finished')finishGame(false);
@@ -579,6 +602,10 @@ async function finishGame(endedEarly) {
   const result=currentSession.finish({endedEarly});
   if(!result || lastResult===result)return;
   lastResult=result;
+  // Comparison context comes from the PRE-save history: what the person could have known right
+  // before this run. Purely informational presentation on the results panel.
+  const before=benchmarkProgress(sessions);
+  $('#timer').classList.remove('timer-urgent');
   // One review per finished drill run (F19): outcome from the run's own finish time, so the record
   // is reproducible from stored data. Practice/benchmark namespaces stay separate — benchmarks and
   // plain practice runs never touch the review store; drill runs are practice-scope by definition.
@@ -591,6 +618,8 @@ async function finishGame(endedEarly) {
   }
   await saveSession(result);
   $('#game').classList.add('hidden');$('#results').classList.remove('hidden');
+  setSessionFocus('results');
+  window.scrollTo({top:0,behavior:'auto'}); // results fill the viewport from a known position
   $('#result-title').textContent=result.benchmark?'Standard benchmark completed':`${result.mode} session completed`;
   $('#result-score').textContent=result.score;
   syncKeypad();
@@ -605,8 +634,39 @@ async function finishGame(endedEarly) {
     const diffText=diff>0?`+${diff} ahead of PB`:diff<0?`${diff} behind PB`:'tied with PB';
     ghostLine=`<p class="secondary ghost-finish">👻 Ghost pace comparison: finished at ${result.score} vs Personal Best ${ghostFinal} (${diffText}). Zero benchmark contamination.</p>`;
   }
-  $('#result-detail').innerHTML=`<p class="secondary">${result.events.length} solved${result.missedCount?` · ${result.missedCount} missed the per-question flash cap`:''} · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}${hidden}</p>${ghostLine}${typologyHtml(typology)}${drillReviewLine(drillReview)}`;
+  $('#result-detail').innerHTML=`${resultTilesHtml(result,stats)}<p class="secondary">${result.events.length} solved${result.missedCount?` · ${result.missedCount} missed the per-question flash cap`:''} · median ${fmt(stats.medianMs)} per question · 90th percentile ${fmt(stats.p90Ms)}${result.benchmark?' · valid benchmark':' · practice/unverified'}${hidden}</p>${resultCompareHtml(result,before)}${ghostLine}${typologyHtml(typology)}${drillReviewLine(drillReview)}`;
   await refresh();
+  // The refresh re-render also fires with fresh history; nothing else to do for compare data.
+}
+/**
+ * Result tiles: the three numbers a player actually reasons about right after a run. Values are
+ * exactly the recorded telemetry; '—' when a number does not exist (e.g. an instant early end).
+ */
+function resultTilesHtml(result,stats){
+  return `<div class="result-tiles${result.benchmark?' standard':''}">
+    <div class="result-tile"><span>SOLVED</span><strong>${result.events.length}</strong></div>
+    <div class="result-tile"><span>MEDIAN</span><strong>${fmt(stats.medianMs)}</strong></div>
+    <div class="result-tile"><span>P90</span><strong>${fmt(stats.p90Ms)}</strong></div>
+    <div class="result-tile"><span>WHICH RUN</span><strong>${result.benchmark?'Standard':'Practice'}</strong></div>
+  </div>`;
+}
+/**
+ * Honest post-run context line: deltas against pre-run history only, labeled with where each
+ * number comes from. A run at or above 70 on a valid standard benchmark is named exactly so —
+ * "reached the 70+ training target this session" — never a claim about hiring or skill.
+ */
+function resultCompareHtml(result,before){
+  if(!result.benchmark){
+    return `<p class="small muted result-note">Practice run — kept out of benchmark medians, ranks and goal progress by design.</p>`;
+  }
+  const median=Number.isFinite(before.recentMedian)?result.score-before.recentMedian:null;
+  const pb=Number.isFinite(before.personalBest)?result.score-before.personalBest:null;
+  const pbBest=before.personalBest!=null&&result.score>before.personalBest;
+  const chips=[];
+  if(median!==null)chips.push(`<span class="result-chip ${median>=0?'good':'warn'}">${median>=0?'+':''}${median} vs recent median ${before.recentMedian}</span>`);
+  if(pb!==null)chips.push(`<span class="result-chip ${pb>=0?'good':'warn'}">${pb>=0?'+':''}${pb} vs personal best ${before.personalBest}${pbBest?' · new personal best':''}</span>`);
+  if(result.score>=70)chips.push(`<span class="result-chip good">70+ training target reached this session</span>`);
+  return `<div class="result-compare">${chips.join('')||'<span class="result-chip">First standard run — the baseline the comparisons below will use</span>'}</div>`;
 }
 /**
  * The review outcome of one finished drill run, persisted. Eligibility (complete pattern drill
@@ -654,7 +714,7 @@ function typologyHtml(t){
   if(!t.total)return '';
   return `<div class="breakdown typology" aria-label="Entry quality">${t.types.map(x=>`<div class="breakdown-row"><span>${ERROR_LABELS[x.type]}</span><div class="bar"><div style="width:${(100*(x.share??0)).toFixed(1)}%"></div></div><span>${x.count} <span class="muted">· ${fmt(x.medianMs)}</span></span></div>`).join('')}</div><p class="small muted">Counts of solved questions by entry pattern, with median solve time. Derived from keystroke telemetry; slips and revisions cost time but never cost points.</p>`;
 }
-function showIdle(){if(currentSession?.state==='active')return;$('#idle-layout').classList.remove('hidden');$('#top-metrics').classList.remove('hidden');$('#game').classList.add('hidden');$('#results').classList.add('hidden');activeGhostTrajectory=null;}
+function showIdle(){if(currentSession?.state==='active')return;$('#idle-layout').classList.remove('hidden');$('#top-metrics').classList.remove('hidden');$('#game').classList.add('hidden');$('#results').classList.add('hidden');$('#timer').classList.remove('timer-urgent');setSessionFocus(null);activeGhostTrajectory=null;}
 function renderAnalytics(){
   const allEvents=sessions.flatMap(s=>s.events??[]), ops=operationSummary(allEvents), diagnostics=diagnose(sessions);
   const worst=diagnostics.weaknesses.filter(w=>w.kind==='operation' && w.count>=5).slice(0,2);

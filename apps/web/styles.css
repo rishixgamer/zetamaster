@@ -258,3 +258,156 @@ dialog.modal::backdrop{background:rgba(11,18,30,.82);backdrop-filter:blur(4px)}
 .quote-inputs-grid label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);font-weight:700}
 .quote-inputs-grid input{background:#0b1624;border:1px solid #405363;border-radius:8px;color:white;font-size:20px;padding:10px;text-align:center}
 .isolation-banner{background:rgba(57,135,229,.1);border:1px solid rgba(57,135,229,.3);border-radius:10px;padding:14px;font-size:12px;line-height:1.6;color:#c3d3e0;display:flex;align-items:center;gap:12px}
+
+/* ==========================================================================
+   Presentation polish (seen-in-a-browser pass) — strictly cosmetic additions,
+   appended last so they read cleanly and win ties. Nothing here touches the
+   session state machine, timing telemetry, scoring, or benchmark validity.
+   ========================================================================== */
+
+/* ---- 1. Focused session mode ---------------------------------------------
+   body.in-game / body.in-results are toggled by startGame/finishGame/showIdle.
+   While a timed run (or its results) own the Train view, the marketing hero,
+   footer and warnings quiet down; the active view centers in the viewport so
+   the problem-panel sits like the original game's bare stage. Nav links go
+   inert only while a run is LIVE (a benchmark cannot be paused or escaped);
+   on the results screen navigation stays available. */
+body.in-game .header,body.in-results .header{opacity:.62;transition:opacity .35s ease}
+body.in-game .header .nav-link{pointer-events:none}
+body.in-game .offline-pill,body.in-results .offline-pill{opacity:.45}
+body.in-game #view-train .hero,body.in-results #view-train .hero{display:none}
+body.in-game .footer,body.in-results .footer{display:none}
+body.in-game #view-train.active,body.in-results #view-train.active{
+  display:flex;flex-direction:column;justify-content:center;
+  min-height:calc(100vh - 89px);padding-bottom:8px;
+}
+body.in-results #view-train.active{padding-bottom:36px}
+#view-train.active{padding-bottom:70px}
+/* Slightly deeper stage for the live game so the numbers read like the original */
+body.in-game #game{
+  width:100%;max-width:840px;
+  border-radius:20px;
+  background:linear-gradient(180deg,rgba(23,37,55,.72),rgba(16,26,40,.72));
+  box-shadow:0 24px 60px -28px rgba(0,0,0,.55);
+}
+body.in-game .timer-container .timer-caption{opacity:.8}
+
+/* ---- 2. Last-ten-seconds clock urgency ------------------------------------
+   Color-only cue on the clock; no sound, no score or telemetry involvement. */
+.timer{transition:color .3s ease}
+.timer.timer-urgent{color:#ffb27d}
+
+/* ---- 3. Problem change micro-fade -----------------------------------------
+   A 110ms opacity settle whenever a new problem appears; no motion, no scale,
+   so reading never depends on it (respects reduced motion). */
+.problem{animation:none}
+.problem.settle{animation:problem-settle .11s ease-out}
+@keyframes problem-settle{from{opacity:.35}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .problem.settle{animation:none}
+  .timer{transition:none}
+  *{scroll-behavior:auto!important}
+}
+
+/* ---- 4. Results panel upgrade --------------------------------------------- */
+#results{max-width:860px;margin:0 auto;text-align:center;border:0;background:none;padding:8px 0 24px}
+.result-score{margin:6px 0 2px;font-size:clamp(76px,12vw,120px);line-height:1;text-shadow:0 10px 44px rgba(110,231,183,.14)}
+.result-tiles{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;
+  max-width:640px;margin:26px auto 18px;text-align:left;
+}
+.result-tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+.result-tile span{display:block;font-size:10px;letter-spacing:1.4px;color:var(--muted);font-weight:800;margin-bottom:5px}
+.result-tile strong{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text)}
+.result-tiles.standard .result-tile:nth-child(4) strong{color:var(--accent);font-size:17px}
+.result-compare{display:flex;justify-content:center;flex-wrap:wrap;gap:9px;margin:4px 0 6px;min-height:26px}
+.result-chip{
+  display:inline-flex;align-items:center;border-radius:999px;padding:6px 13px;
+  font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;
+  border:1px solid rgba(143,162,183,.25);background:rgba(143,162,183,.08);color:var(--muted);
+}
+.result-chip.good{border-color:rgba(110,231,183,.35);background:rgba(110,231,183,.1);color:#6ee7b7}
+.result-chip.warn{border-color:rgba(251,140,120,.32);background:rgba(251,140,120,.08);color:#fb8c78}
+.result-note{margin:2px 0 6px}
+#results .button-row{margin-top:20px}
+@media (max-width:640px){.result-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ---- 5. General surface polish --------------------------------------------
+   Small, low-risk refinements: motion on hover states, crisper chips, calmer
+   scrollbars, slight glass on cards. All pure CSS. */
+.panel{transition:border-color .2s ease}
+html{scrollbar-color:#2c3f52 transparent;scrollbar-width:thin}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2c3f52;border-radius:6px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+.nav-link{transition:color .18s ease,background .18s ease}
+.primary-btn{transition:background .18s ease,transform .12s ease,box-shadow .18s ease;box-shadow:0 8px 22px -10px rgba(110,231,183,.45)}
+.primary-btn:hover{transform:translateY(-1px)}
+.primary-btn:active{transform:translateY(0)}
+.secondary-btn{transition:background .18s ease,border-color .18s ease}
+.chip{transition:background .18s ease,color .18s ease,border-color .18s ease}
+.chip.selected{background:var(--accent-dark);border-color:#4f9b7a;color:var(--accent)}
+.game-score{font-size:34px;font-weight:800;letter-spacing:-.5px}
+.game-score small{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-left:2px}
+.game-foot{color:var(--muted);font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.text-btn{color:var(--muted);text-decoration:underline;text-underline-offset:3px;background:none;border:0}
+.text-btn:hover{color:var(--text)}
+
+/* ---- 6. Live-game readability ---------------------------------------------
+   The answer field grows with the problem on wide screens for a hair of
+   hierarchy; the enter/delete keypad keys keep their spans. */
+@media (min-width:820px){
+  body.in-game #answer{max-width:400px;font-size:38px;padding:16px}
+}
+.keypad-key{transition:background .15s ease,transform .1s ease}
+.keypad-key:active{transform:scale(.97);background:#2b3f55}
+
+/* ---- 7. Mobile navigation ---------------------------------------------------
+   The header wraps on narrow screens and the nav row ends up squeezed; give
+   the nav a single horizontally scrollable line instead (standard mobile
+   pattern, keyboard reachable, no content hidden behind overflow). */
+@media (max-width:700px){
+  .header{gap:10px}
+  .nav{order:3;width:100%;justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
+  .nav::-webkit-scrollbar{display:none}
+  .nav-link{flex:none;white-space:nowrap}
+}
+
+/* ---- 8. Score cards and setup pacing ---------------------------------------
+   Top metric cards get a numeric emphasis gradient so the run history reads
+   at a glance; the custom-range and settings sub-forms keep their compact
+   rhythm but get slightly softer corners to match the panel radius scale. */
+.metric{transition:border-color .2s ease}
+#top-metrics .metric:nth-child(1) strong{color:var(--gold)}
+#top-metrics .metric:nth-child(5) strong{color:var(--accent)}
+.setup-extra{border-radius:11px}
+.notice{border-radius:9px}
+
+/* ---- 9. Segmented operation toggles ----------------------------------------
+   The four operation checkboxes read as one control instead of four boxes:
+   checked = accent-tinted pill, disabled = dimmed, the real checkbox stays in
+   the label so assistive tech and :checked state remain authoritative. */
+.operation-switches{display:flex;flex-wrap:wrap;gap:8px}
+.operation-switches label{
+  display:flex;gap:7px;align-items:center;cursor:pointer;
+  border:1px solid #334559;padding:9px 13px;background:#101c2a;border-radius:9px;
+  font-size:12px;font-weight:650;letter-spacing:.2px;user-select:none;
+  transition:border-color .15s ease,background .15s ease,color .15s ease;
+}
+.operation-switches label:has(input:checked){
+  border-color:#3a6f5c;background:rgba(110,231,183,.09);color:#c9f6e3;
+}
+.operation-switches label:hover{border-color:#4b6180}
+.operation-switches input{accent-color:var(--accent);width:13px;height:13px;flex:none}
+.operation-switches label:has(input:disabled){opacity:.45;cursor:not-allowed}
+
+/* ---- 10. Calibration modal diagnostic tiles --------------------------------
+   The four hardware diagnostics render in a ~530px dialog; the shared
+   consistency-tiles grid puts four columns in any wide viewport and the
+   numbers overflow their tiles (ms/digit → "ms/digi…", "252–255 ms" wraps
+   three lines). Two columns always match the dialog, regardless of viewport:
+   this is a container-fit fix, not a restyle — values and copy are untouched. */
+.calibration-modal .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:14px 0 18px}
+.calibration-modal .metric{padding:14px 16px}
+.calibration-modal .metric strong{font-size:24px}
+.calibration-modal .tile-note{font-size:11.5px}
