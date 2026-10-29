@@ -272,20 +272,66 @@ const heatmapState = () => ({
 });
 const replayState = () => ({ rows: document.querySelectorAll('#replay-root .history-row, #replay-root .review-row').length, text: (document.querySelector('#replay-root')?.textContent ?? '').slice(0, 160), slowBtn: !!document.querySelector('#replay-slow') });
 
+/* Basic structural accessibility sweep over the whole current document (hidden controls included).
+ * Dependency-free and deliberately shallow: it is not a WCAG audit. Self-contained for serialization. */
+const a11ySweep = () => {
+  const problems = [];
+  const label = el => `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : ''}`;
+  const named = el => !!(el.getAttribute('aria-label')?.trim() || el.getAttribute('aria-labelledby')?.trim() || el.labels?.length || el.getAttribute('title')?.trim());
+  for (const el of document.querySelectorAll('input:not([type="hidden"]):not([type="button"]):not([type="submit"]), select, textarea')) {
+    if (!named(el)) problems.push('unnamed field ' + label(el));
+  }
+  for (const el of document.querySelectorAll('button, input[type="button"], input[type="submit"], [role="button"]')) {
+    const text = (el.tagName === 'INPUT' ? el.value : el.textContent)?.trim();
+    if (!text && !named(el) && !el.querySelector('img[alt]:not([alt=""])')) problems.push('button without text ' + label(el));
+  }
+  const seen = new Map();
+  for (const el of document.querySelectorAll('[id]')) seen.set(el.id, (seen.get(el.id) ?? 0) + 1);
+  for (const [id, n] of seen) if (n > 1) problems.push(`duplicate id ${id} x${n}`);
+  for (const grid of document.querySelectorAll('[role="grid"]')) {
+    const cells = [...grid.querySelectorAll('[role="gridcell"]')];
+    const tabbable = cells.filter(c => c.tabIndex === 0).length;
+    if (cells.length && tabbable !== 1) problems.push(`grid ${label(grid)} has ${tabbable} tab stops among ${cells.length} cells`);
+    for (const c of cells) if (c.getAttribute('tabindex') === null) problems.push('grid cell not focusable ' + label(c));
+  }
+  return { problems, fields: document.querySelectorAll('input, select, textarea').length, buttons: document.querySelectorAll('button').length, grids: document.querySelectorAll('[role="grid"]').length };
+};
+const horizontalOverflow = limit => ({
+  scroll: document.documentElement.scrollWidth,
+  inner: window.innerWidth,
+  wide: [...document.querySelectorAll('body *')].filter(el => el.getBoundingClientRect().right > limit + 1 && getComputedStyle(el).position !== 'fixed' && !el.closest('.chart-scroll, .heatmap-scroll, .nav, [hidden], .hidden'))
+    .slice(0, 4).map(el => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\s+/).join('.') : '') + ' right=' + Math.round(el.getBoundingClientRect().right)),
+});
+const centerOf = sel => {
+  const el = document.querySelector(sel);
+  if (!el) throw new Error('missing ' + sel);
+  el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+};
+
 /* Driver bundle: all helpers install once per document as page globals under window.__zmDrive, so
  * helpers may reference each other by bare name (solveMany → solveOnce → OP_CALC) and no function
  * has to be serialized per call. installDriverInto runs after every navigation. */
-const PAGE_FN_NAMES = Object.keys({ installTraps, pageErrors, click, jsBound, setNav, setMode, setDuration, setField, clearField, gameVisible, gameState, resultsState, solveOnce, solveMany, keypadSolveOne, entrySettingsState, dumpSessions, academyState, academyAnswer, duelCoachesState, quantState, heatmapState, replayState });
+const PAGE_FNS = { installTraps, pageErrors, click, jsBound, setNav, setMode, setDuration, setField, clearField, gameVisible, gameState, resultsState, solveOnce, solveMany, keypadSolveOne, entrySettingsState, dumpSessions, academyState, academyAnswer, duelCoachesState, quantState, heatmapState, replayState, a11ySweep, horizontalOverflow, centerOf };
 const PAGE_BUNDLE = `
   const OP_CALC = { '+': (a, b) => a + b, '−': (a, b) => a - b, '×': (a, b) => a * b, '÷': (a, b) => a / b };
-  ${ ['installTraps', 'pageErrors', 'click', 'jsBound', 'setNav', 'setMode', 'setDuration', 'setField', 'clearField', 'gameVisible', 'gameState', 'resultsState', 'solveOnce', 'solveMany', 'keypadSolveOne', 'entrySettingsState', 'dumpSessions', 'academyState', 'academyAnswer', 'duelCoachesState', 'quantState', 'heatmapState', 'replayState'].map(name => {
-      const fn = { installTraps, pageErrors, click, jsBound, setNav, setMode, setDuration, setField, clearField, gameVisible, gameState, resultsState, solveOnce, solveMany, keypadSolveOne, entrySettingsState, dumpSessions, academyState, academyAnswer, duelCoachesState, quantState, heatmapState, replayState }[name];
+  ${ Object.entries(PAGE_FNS).map(([name, fn]) => {
       const src = String(fn);
       return /^function /.test(src) ? src : `const ${name} = ${src};`;
     }).join('\n')
   }
-  window.__zmDrive = { ${PAGE_FN_NAMES.join(', ')} };
+  window.__zmDrive = { ${Object.keys(PAGE_FNS).join(', ')} };
 `;
+
+/** A real touch tap through the DevTools input pipeline (not el.click()). */
+async function tap(cdp, sel) {
+  const { x, y } = await ev(cdp, centerOf, sel);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await new Promise(r => setTimeout(r, 60));
+}
+const SIX_VIEWS = ['train', 'analytics', 'academy', 'quant', 'community', 'roadmap'];
 
 /* ---------- chrome + cdp boot ---------- */
 async function installDriverInto(cdp) {
@@ -613,6 +659,97 @@ async function run(font) {
       const q = await ev(cdp, quantState);
       assert(q.panels > 3 && !q.empty, 'quant root should render panels: ' + JSON.stringify(q));
       return q.firstTitle;
+    });
+
+    await step('a11y: every view has named controls, unique ids and a keyboard-reachable grid', async () => {
+      const totals = { fields: 0, buttons: 0, grids: 0 };
+      for (const view of SIX_VIEWS) {
+        await ev(cdp, setNav, view);
+        await new Promise(r => setTimeout(r, 250));
+        if (view === 'analytics') await waitUntil(cdp, () => document.querySelectorAll('#heatmap-root td[role="gridcell"]').length > 0, { label: 'heatmap grid' });
+        const sweep = await ev(cdp, a11ySweep);
+        assert(sweep.problems.length === 0, `${view}: ` + sweep.problems.slice(0, 6).join('; '));
+        totals.fields = Math.max(totals.fields, sweep.fields); totals.buttons = Math.max(totals.buttons, sweep.buttons); totals.grids = Math.max(totals.grids, sweep.grids);
+      }
+      assert(totals.grids >= 1, 'the heatmap grid should have been checked');
+      // Keyboard reach: Tab stop is on one cell, and a real ArrowRight key moves focus to a different cell.
+      await ev(cdp, setNav, 'analytics');
+      const start = await ev(cdp, () => { const c = document.querySelector('#heatmap-root td[role="gridcell"][tabindex="0"]'); c.focus(); return { row: c.dataset.row, col: c.dataset.col }; });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+      await new Promise(r => setTimeout(r, 150));
+      const moved = await ev(cdp, () => { const c = document.activeElement; return { role: c.getAttribute('role'), row: c.dataset.row, col: c.dataset.col }; });
+      assert(moved.role === 'gridcell' && Number(moved.col) === Number(start.col) + 1 && moved.row === start.row, `ArrowRight should move focus one cell right: ${JSON.stringify({ start, moved })}`);
+      await ev(cdp, setNav, 'train');
+      return `6 views swept (up to ${totals.fields} fields, ${totals.buttons} buttons); grid focus ${start.row},${start.col} → ${moved.row},${moved.col}`;
+    });
+
+    await step('F48 phone viewport (375×667, touch): no horizontal overflow, nav links tappable, screenshots', async () => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
+      await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+      await new Promise(r => setTimeout(r, 300));
+      await mkdir(join(REPO, 'tmp'), { recursive: true });
+      const widths = [];
+      for (const view of SIX_VIEWS) {
+        // The nav is a horizontal strip on phones, so "reachable" means a real tap on the link switches the view.
+        await tap(cdp, `.nav-link[data-view="${view}"]`);
+        const active = await ev(cdp, () => document.querySelector('.nav-link.active')?.dataset.view);
+        assert(active === view, `tapping the ${view} nav link should open it, active is ${active}`);
+        await new Promise(r => setTimeout(r, 300));
+        if (view === 'analytics') await waitUntil(cdp, () => document.querySelectorAll('#analytics-root .panel').length > 4, { label: 'analytics render' });
+        // Mobile emulation widens innerWidth to fit overflowing content, so compare against the fixed device width.
+        const o = await ev(cdp, horizontalOverflow, 375);
+        assert(o.scroll <= 375 && o.inner <= 375, `${view}: horizontal overflow, scrollWidth ${o.scroll}, innerWidth ${o.inner}, widest: ${o.wide.join(' | ')}`);
+        const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(join(REPO, 'tmp', `smoke-phone-${view}.png`), Buffer.from(shot.data, 'base64'));
+        widths.push(o.scroll);
+      }
+      return `scrollWidth ${widths.join('/')} ≤ 375; screenshots tmp/smoke-phone-*.png`;
+    });
+
+    await step('F48 phone: a short custom run is playable with the on-screen keypad alone; answer has focus', async () => {
+      await goto(cdp, url); // a fresh phone-sized boot; the setup panel is hidden while the previous results are showing
+      await ev(cdp, installTraps);
+      await ev(cdp, setMode, 'custom');
+      await ev(cdp, setDuration, 15);
+      await ev(cdp, setField, '#add-left-min', '3');
+      await ev(cdp, setField, '#add-left-max', '5');
+      const keypadOn = await ev(cdp, () => document.querySelector('#setting-keypad').checked);
+      assert(keypadOn, 'keypad setting persisted from the earlier step');
+      await tap(cdp, '#start');
+      await waitUntil(cdp, gameVisible, { label: 'phone game open' });
+      const focus = await ev(cdp, () => ({ id: document.activeElement?.id ?? '', keypad: !document.querySelector('#keypad').classList.contains('hidden') }));
+      assert(focus.id === 'answer', 'answer field should have focus when the run starts, got ' + JSON.stringify(focus));
+      assert(focus.keypad, 'keypad should be visible on the phone');
+      let scored = 0;
+      for (let i = 0; i < 3; i++) {
+        const q = await ev(cdp, () => {
+          const text = (document.querySelector('#problem').textContent ?? '').trim();
+          const m = /^(\d+)\s*([+×÷]|−|–)\s*(\d+)$/.exec(text);
+          if (!m) return { error: 'unparseable ' + text };
+          const a = Number(m[1]), b = Number(m[3]);
+          const value = String(m[2] === '+' ? a + b : m[2] === '×' ? a * b : m[2] === '÷' ? a / b : a - b);
+          return { value, score: Number(document.querySelector('#game-score').textContent.match(/\d+/)?.[0] ?? 0) };
+        });
+        assert(!q.error, q.error);
+        for (const ch of q.value) await tap(cdp, `.keypad-key[data-key="${ch}"]`);
+        let after = q.score;
+        for (let i = 0; i < 20 && after === q.score; i++) {
+          await new Promise(r => setTimeout(r, 100));
+          after = await ev(cdp, () => Number(document.querySelector('#game-score').textContent.match(/\d+/)?.[0] ?? 0));
+        }
+        assert(after === q.score + 1, `tapping ${q.value} should score: ${q.score} → ${after}`);
+        scored = after;
+      }
+      await tap(cdp, '#finish');
+      await waitUntil(cdp, () => !document.querySelector('#results').classList.contains('hidden'), { label: 'phone results' });
+      const res = await ev(cdp, resultsState);
+      assert(Number(res.score) === scored && /practice\/unverified/.test(res.detail), 'phone run saved as practice: ' + JSON.stringify(res));
+      const o = await ev(cdp, horizontalOverflow, 375);
+      assert(o.scroll <= 375 && o.inner <= 375, `results screen overflows: scrollWidth ${o.scroll}, innerWidth ${o.inner}, widest: ${o.wide.join(' | ')}`);
+      await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await cdp.send('Emulation.clearDeviceMetricsOverride');
+      return `scored ${scored} by tapping keypad keys only`;
     });
 
     await step('F43: 120s standard benchmark draws a fresh seed and stores benchmark:true (real time)', async () => {
