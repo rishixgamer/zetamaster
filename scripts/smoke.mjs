@@ -32,6 +32,8 @@ import { encodeChallenge } from '../packages/community/src/challenges.js';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/[/\\]+$/, '');
 const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+// CI runners cannot create Chrome's sandbox (unprivileged user namespaces are restricted), so CI opts out explicitly.
+const CHROME_FLAGS = process.env.SMOKE_NO_SANDBOX === '1' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
 const results = [];
 const step = async (name, fn) => {
   let out;
@@ -296,7 +298,7 @@ async function launchChrome(profileDir) {
   const child = spawn(CHROME, [
     '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profileDir}`,
     '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--no-proxy-server',
-    '--window-size=1280,960', 'about:blank',
+    '--window-size=1280,960', ...CHROME_FLAGS, 'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   const stderr = [];
   let settled = false;
@@ -324,7 +326,7 @@ async function launchChrome(profileDir) {
 /* ---------- the checklist ---------- */
 const TOP = '  ↓ smoke checklist';
 async function run(font) {
-  const tmp = await mkdtemp(join(tmpdir(), 'opencode', 'zetamaster-smoke-'));
+  const tmp = await mkdtemp(join(tmpdir(), 'zetamaster-smoke-'));
   const profileDir = join(tmp, 'profile');
   const scratchDir = join(tmp, 'out');
   await mkdir(scratchDir, { recursive: true });

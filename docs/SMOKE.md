@@ -26,6 +26,21 @@ which the CDP client uses; no npm dependencies are added; the script exits clean
 message on older Node). The runner serves the app itself on a free ephemeral port, so it does not
 conflict with `npm run dev`.
 
+## Run it in CI
+
+`.github/workflows/ci.yml` has a separate `smoke` job (so the unit-test job stays fast) that runs on
+every push and pull request: `ubuntu-latest`, Node 22, and the runner's preinstalled
+`google-chrome` via `CHROME_BIN`. It takes about 3 minutes because it includes the real 120-second
+benchmark. On failure it uploads `tmp/*.png` and `tmp/smoke.log` as the `smoke-failure` artifact.
+
+Linux-specific details:
+
+- `SMOKE_NO_SANDBOX=1` makes the runner launch Chrome with `--no-sandbox --disable-dev-shm-usage`.
+  Hosted runners restrict unprivileged user namespaces, which Chrome's sandbox needs, and their
+  `/dev/shm` is small. The flag is opt-in. Local runs keep the sandbox.
+- The throwaway profile lives under `os.tmpdir()`; the runner used to assume a `tmpdir()/opencode`
+  folder that exists on the author's Mac but not on a fresh machine.
+
 ## What the pass covers
 
 All checks run through the same DOM surfaces a person uses (mode select, setup fields, keypad
