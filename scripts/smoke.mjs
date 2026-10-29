@@ -34,6 +34,8 @@ const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/[/\\]+$/, ''
 const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 // CI runners cannot create Chrome's sandbox (unprivileged user namespaces are restricted), so CI opts out explicitly.
 const CHROME_FLAGS = process.env.SMOKE_NO_SANDBOX === '1' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
+// The suite serves the repo the way a static host under a project subpath would (like GitHub Pages).
+const BASE_PATH = '/zetamaster/';
 const results = [];
 const step = async (name, fn) => {
   let out;
@@ -55,13 +57,16 @@ async function serveApp() {
     try {
       const url = new URL(req.url, 'http://localhost');
       const relative = decodeURIComponent(url.pathname);
-      const requested = relative === '/' ? '/apps/web/index.html' : relative === '/sw.js' ? '/apps/web/sw.js' : relative;
+      // A plain static host: the repo root served under a subpath, with no rewrites and no special headers.
+      if (!relative.startsWith(BASE_PATH)) { res.writeHead(404); res.end('Not found'); return; }
+      const requested = '/' + relative.slice(BASE_PATH.length);
       const pathname = resolve(REPO, '.' + requested);
-      if (!pathname.startsWith(REPO + sep)) { res.writeHead(403); res.end(); return; }
+      if (!pathname.startsWith(REPO + sep) && pathname !== REPO) { res.writeHead(403); res.end(); return; }
       const target = (await stat(pathname).catch(() => null))?.isDirectory() ? resolve(pathname, 'index.html') : pathname;
       const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
+      const contents = await readFile(target);
       res.writeHead(200, { 'Content-Type': mime[extname(target)] ?? 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
-      res.end(await readFile(target));
+      res.end(contents);
     } catch { res.writeHead(404); res.end('Not found'); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -233,7 +238,7 @@ const entrySettingsState = () => ({
   addLeftPrefill: document.querySelector('#add-left-min')?.value ?? null,
 });
 const dumpSessions = async () => {
-  const db = await import('/packages/storage/src/db.js');
+  const db = await import(new URL('packages/storage/src/db.js', document.baseURI).href);
   const [sessions, reviews] = await Promise.all([db.listSessions(), db.listSkillReviews()]);
   return { count: sessions.length, reviews: reviews.length, sessions: sessions.map(s => ({ mode: s.mode, benchmark: s.benchmark, score: s.score, endedEarly: s.endedEarly, elapsedMs: s.elapsedMs, seed: s.seed, seedSource: s.seedSource ?? null, eventCount: (s.events ?? []).length, rulesId: s.rules?.id, tagsOk: (s.events ?? []).every(e => Array.isArray(e.tags)), drillStage: s.drill?.stage ?? null, drillCell: s.drill?.cell ?? null, provenance: s.provenance ? { surface: s.provenance.surface, policyId: s.provenance.policyId ?? null, cellId: s.provenance.cellId ?? null, stage: s.provenance.stage ?? null } : null })) };
 };
@@ -401,8 +406,9 @@ async function run(font) {
   const profileDir = join(tmp, 'profile');
   const scratchDir = join(tmp, 'out');
   await mkdir(scratchDir, { recursive: true });
-  const { server, port } = await serveApp();
-  const url = `http://127.0.0.1:${port}/`;
+  // SMOKE_URL points the suite at an already-running static server (it must end in /) instead of the built-in one.
+  const { server, port } = process.env.SMOKE_URL ? { server: { close() {} }, port: 0 } : await serveApp();
+  const url = process.env.SMOKE_URL ?? `http://127.0.0.1:${port}${BASE_PATH}`;
   let child = null, cdp = null, chrome = null;
   try {
     ({ child, cdp } = await launchChrome(profileDir));
@@ -456,7 +462,7 @@ async function run(font) {
       // The memory-only singleton drops it. This does not submit a run: the fast smoke solves
       // are below the replay check's latency floor, so they are not board entries.
       await ev(cdp, async () => {
-        const mod = await import('/packages/services/src/leaderboard.js');
+        const mod = await import(new URL('packages/services/src/leaderboard.js', document.baseURI).href);
         localStorage.setItem(mod.LEADERBOARD_STORE_KEY, JSON.stringify([{
           alias: 'SmokeBoard', score: 42, verifiedAt: '2026-10-18T12:00:00.000Z', meanLatencyMs: 1400, evidenceHash: 'smoke',
         }]));
@@ -557,7 +563,7 @@ async function run(font) {
       assert(s.mode === 'custom' && s.benchmark === false && s.endedEarly === true, JSON.stringify(s));
       assert(s.eventCount === customScore, 'event count ' + s.eventCount + ' vs score ' + customScore);
       assert(s.tagsOk, 'tags must be arrays on every event');
-      const stored = await ev(cdp, async () => { const db = await import('/packages/storage/src/db.js'); const ss = await db.listSessions(); return { wrongAttempts: Array.isArray(ss[0]?.events?.[0]?.wrongAttempts), trace: Array.isArray(ss[0]?.events?.[0]?.trace), firstInput: typeof ss[0]?.events?.[0]?.firstInputMs }; });
+      const stored = await ev(cdp, async () => { const db = await import(new URL('packages/storage/src/db.js', document.baseURI).href); const ss = await db.listSessions(); return { wrongAttempts: Array.isArray(ss[0]?.events?.[0]?.wrongAttempts), trace: Array.isArray(ss[0]?.events?.[0]?.trace), firstInput: typeof ss[0]?.events?.[0]?.firstInputMs }; });
       assert(stored.wrongAttempts && stored.trace && stored.firstInput === 'number', JSON.stringify(stored));
       return JSON.stringify(dump.sessions[0]);
     });
@@ -571,6 +577,28 @@ async function run(font) {
       const dump = await ev(cdp, dumpSessions);
       assert(dump.count === 1, 'history should survive reload');
       return 'persisted settings + 1 session';
+    });
+
+    await step('F48 offline: the installed worker serves the app and saved history with the network off', async () => {
+      const worker = await ev(cdp, async () => {
+        const registration = await Promise.race([navigator.serviceWorker.ready, new Promise((_, reject) => setTimeout(() => reject(new Error('no service worker became active')), 5000))]);
+        return { scope: registration.scope, script: registration.active?.scriptURL, controlled: !!navigator.serviceWorker.controller, base: document.baseURI };
+      });
+      assert(worker.scope === url && worker.script === url + 'sw.js', 'worker should be sw.js beside the page and scoped to it: ' + JSON.stringify(worker));
+      assert(worker.controlled, 'the page should be controlled by the worker after a reload');
+      await cdp.send('Network.enable');
+      await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+      try {
+        await goto(cdp, url);
+        await ev(cdp, installTraps);
+        const dump = await ev(cdp, dumpSessions);
+        assert(dump.count === 1, 'saved history should load from storage while offline, got ' + dump.count);
+        const errs = await ev(cdp, pageErrors);
+        assert(errs.errors.length === 0, 'offline boot errors: ' + JSON.stringify(errs.errors));
+      } finally {
+        await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+      }
+      return `scope ${worker.scope}; offline reload booted with 1 saved session`;
     });
 
     await step('F04: sequence viewer renders history; replay relaunches as untimed practice', async () => {

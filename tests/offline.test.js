@@ -16,9 +16,9 @@ function importGraph(entry, seen = new Set()) {
 }
 
 test('service worker precaches every module the browser app imports', () => {
-  const sw = readFileSync(resolve(root, 'apps/web/sw.js'), 'utf8');
+  const sw = readFileSync(resolve(root, 'sw.js'), 'utf8');
   const cached = new Set(JSON.parse(/const FILES=(\[[^\]]+\])/.exec(sw)[1].replaceAll("'", '"')));
   for (const file of importGraph(resolve(root, 'apps/web/src/main.js'))) {
-    assert.ok(cached.has('/' + relative(root, file)), `sw.js FILES is missing /${relative(root, file)}`);
+    assert.ok(cached.has(relative(root, file)), `sw.js FILES is missing ${relative(root, file)}`);
   }
 });

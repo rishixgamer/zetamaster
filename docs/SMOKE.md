@@ -24,7 +24,10 @@ Requirements: Chrome installed at `/Applications/Google Chrome.app` (macOS defau
 `$CHROME_BIN`) and Node >= 22 on the PATH of the machine running it (Node 22+ ships `WebSocket`,
 which the CDP client uses; no npm dependencies are added; the script exits cleanly with a version
 message on older Node). The runner serves the app itself on a free ephemeral port, so it does not
-conflict with `npm run dev`.
+conflict with `npm run dev`. It serves the repo as a plain static host under the subpath `/zetamaster/`
+with no rewrites and no special headers, so the suite also proves the app works on that kind of host.
+To check a real server instead, start it and pass its URL (ending in `/`):
+`python3 -m http.server 8101` then `SMOKE_URL=http://127.0.0.1:8101/ npm run smoke`.
 
 ## Run it in CI
 
@@ -53,6 +56,7 @@ buttons, input events) — nothing calls the app's internals directly:
 | F05 | keypad + sound toggles persist to localStorage; survived reload; keypad digits feed the same answer path and score |
 | F02/F10 | valid practice-only custom run (addition axis 3–5) records solved questions with tag arrays and engine-3 telemetry |
 | reload | entry settings, last-used ranges and saved history survive a fresh document |
+| F48 | offline: the page's service worker is `sw.js` beside it with the page's own scope, controls the page, and with the network switched off a reload still boots and loads the saved history |
 | F04 | sequence viewer renders history; replay of the slowest questions launches as labeled practice (`benchmark: false`) |
 | F21 | randomized policy trial joins from the Train panel (seeded id stored), the policy line names the trial state, and leaving clears it |
 | F26 | Academy rehearsal completes the pinned `68 + 50 = 118 = 115` card example incl. wrong-answer retry; drill hand-off runs as practice; transfer draw shows its seed |

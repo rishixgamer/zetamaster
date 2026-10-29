@@ -1781,4 +1781,4 @@ function bind(){
   $$('#lesson-filters button').forEach(button=>button.addEventListener('click',()=>{$$('#lesson-filters button').forEach(b=>b.classList.toggle('selected',b===button));renderLessons(button.dataset.op);}));
 }
 bind();updateMode();renderLessons();renderRoadmap();renderCommunity();renderQuant();checkUrlChallenge();applyHeatmapHash();refresh().catch(error=>console.error('History loading failed',error));
-if('serviceWorker' in navigator && location.protocol!=='file:')navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(error=>console.warn('Offline registration unavailable',error));
+if('serviceWorker' in navigator && location.protocol!=='file:')navigator.serviceWorker.register('sw.js').catch(error=>console.warn('Offline registration unavailable',error));

@@ -12,7 +12,7 @@ import { forecastChartLayout, forecastChartSvg } from '../apps/web/src/score-cha
 const root = resolve(new URL('..', import.meta.url).pathname);
 
 test('index.html contains all M3/M4 UI panel roots and modal elements', () => {
-  const html = readFileSync(resolve(root, 'apps/web/index.html'), 'utf8');
+  const html = readFileSync(resolve(root, 'index.html'), 'utf8');
 
   // F35: Skill Progression Ladder
   assert.ok(html.includes('id="ladder-panel"'), 'ladder-panel element in Train tab');

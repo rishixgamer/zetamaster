@@ -13,7 +13,7 @@ cd zetamaster
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173** in a browser. To run tests:
+Open **http://127.0.0.1:5173** in a browser. The app is plain static files, so any static host works with no rewrites or special headers: `python3 -m http.server` from this folder, or the folder published under a subpath such as `/zetamaster/`. The page and its service worker sit at the repo root and use relative URLs, so history persists and the app reloads offline after the first visit. To run tests:
 
 ```bash
 npm run check
@@ -53,7 +53,7 @@ This zero-dependency starter is deliberately simple so Claude Code, Codex, Pi, o
 - IndexedDB-first session storage with localStorage fallback, downloadable JSON/CSV, JSON import, and opt-in local history deletion.
 - Installable PWA with offline cache after an initial successful visit (browser permitting).
 - Tests, code-agent instructions, development roadmap and **55 machine-readable acceptance records**.
-- **Browser smoke runner** (`npm run smoke`): 20 end-to-end checks against the real app in a real Chrome (launch, custom ranges, keypad persistence, replay, policy-trial join/leave, Academy, the on-device community board, quant view, a full 120-second standard benchmark stored `benchmark: true`, benchmark isolation sweep, zero page errors) — see [SMOKE](docs/SMOKE.md); no new dependencies. Requires a locally installed Chrome and Node ≥ 22.
+- **Browser smoke runner** (`npm run smoke`): 25 end-to-end checks against the real app in a real Chrome (launch, custom ranges, keypad persistence, replay, policy-trial join/leave, Academy, the on-device community board, quant view, a full 120-second standard benchmark stored `benchmark: true`, benchmark isolation sweep, zero page errors) — see [SMOKE](docs/SMOKE.md); no new dependencies. Requires a locally installed Chrome and Node ≥ 22.
 
 ## What is not finished
 
@@ -73,11 +73,11 @@ zetamaster/
 ├── AGENTS.md                       # universal instructions for coding agents
 ├── CLAUDE.md                       # Claude Code entry point
 ├── .github/                        # CI, Copilot guidance, PR template
+├── index.html                       # the app's page; at the root so a plain static host can serve it
+├── sw.js                            # cache-first fallback for offline use; at the root so its scope covers the app
 ├── apps/web/
-│   ├── index.html                   # local-first app
 │   ├── styles.css
 │   ├── src/main.js                  # browser UI and event handling
-│   ├── sw.js                        # cache-first fallback for offline use
 │   └── manifest.webmanifest
 ├── packages/
 │   ├── core/src/                   # default rules, RNG, generator, session state

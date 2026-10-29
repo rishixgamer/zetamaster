@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 const root = resolve(__dirname, '..');
 
 test('Quant Academy UI integration and navigation markers', () => {
-  const indexHtml = readFileSync(resolve(root, 'apps/web/index.html'), 'utf8');
+  const indexHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
 
   // Navigation tab present
   assert.ok(indexHtml.includes('data-view="quant"'), 'index.html must have data-view="quant" nav button');
@@ -25,15 +25,15 @@ test('Quant Academy UI integration and navigation markers', () => {
   assert.ok(mainJs.includes('renderQuant()'), 'main.js must call renderQuant() in refresh');
 
   // Verify service worker precaches quant modules
-  const swJs = readFileSync(resolve(root, 'apps/web/sw.js'), 'utf8');
-  assert.ok(swJs.includes('/apps/web/src/quant-ui.js'), 'sw.js must precache quant-ui.js');
-  assert.ok(swJs.includes('/packages/quant/src/rational.js'), 'sw.js must precache rational.js');
-  assert.ok(swJs.includes('/packages/quant/src/fractions.js'), 'sw.js must precache fractions.js');
-  assert.ok(swJs.includes('/packages/quant/src/probability.js'), 'sw.js must precache probability.js');
-  assert.ok(swJs.includes('/packages/quant/src/finance.js'), 'sw.js must precache finance.js');
-  assert.ok(swJs.includes('/packages/quant/src/estimation.js'), 'sw.js must precache estimation.js');
-  assert.ok(swJs.includes('/packages/quant/src/running.js'), 'sw.js must precache running.js');
-  assert.ok(swJs.includes('/packages/quant/src/historical.js'), 'sw.js must precache historical.js');
-  assert.ok(swJs.includes('/packages/quant/src/market-making.js'), 'sw.js must precache market-making.js');
-  assert.ok(swJs.includes('/packages/quant/src/scoring.js'), 'sw.js must precache scoring.js');
+  const swJs = readFileSync(resolve(root, 'sw.js'), 'utf8');
+  assert.ok(swJs.includes('apps/web/src/quant-ui.js'), 'sw.js must precache quant-ui.js');
+  assert.ok(swJs.includes('packages/quant/src/rational.js'), 'sw.js must precache rational.js');
+  assert.ok(swJs.includes('packages/quant/src/fractions.js'), 'sw.js must precache fractions.js');
+  assert.ok(swJs.includes('packages/quant/src/probability.js'), 'sw.js must precache probability.js');
+  assert.ok(swJs.includes('packages/quant/src/finance.js'), 'sw.js must precache finance.js');
+  assert.ok(swJs.includes('packages/quant/src/estimation.js'), 'sw.js must precache estimation.js');
+  assert.ok(swJs.includes('packages/quant/src/running.js'), 'sw.js must precache running.js');
+  assert.ok(swJs.includes('packages/quant/src/historical.js'), 'sw.js must precache historical.js');
+  assert.ok(swJs.includes('packages/quant/src/market-making.js'), 'sw.js must precache market-making.js');
+  assert.ok(swJs.includes('packages/quant/src/scoring.js'), 'sw.js must precache scoring.js');
 });
