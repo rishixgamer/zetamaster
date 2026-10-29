@@ -11,7 +11,7 @@ createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const relative = decodeURIComponent(url.pathname);
-    const requested = relative === '/' ? '/apps/web/index.html' : relative === '/sw.js' ? '/apps/web/sw.js' : relative;
+    const requested = relative;
     const pathname = resolve(root, '.' + requested);
     if (pathname !== root && !pathname.startsWith(root + sep)) {
       res.writeHead(403); res.end('Forbidden'); return;

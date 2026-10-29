@@ -6,7 +6,7 @@ import { verifyPastedExplanation, coachPlanForLesson } from '../apps/web/src/coa
 import { CONSENT_KEY, readCoachConsent, requestCoachExplanation, CoachUnavailableError } from '../packages/services/src/ai-explanations.js';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
-const html = () => readFileSync(resolve(root, 'apps/web/index.html'), 'utf8');
+const html = () => readFileSync(resolve(root, 'index.html'), 'utf8');
 const main = () => readFileSync(resolve(root, 'apps/web/src/main.js'), 'utf8');
 
 // Academy close-out wiring (F26–F29) and the F02/F04/F05 setup surface. DOM modules are trusted

@@ -14,7 +14,7 @@ import { createGenerator } from '../packages/core/src/generator.js';
 const root = resolve(new URL('..', import.meta.url).pathname);
 
 test('index.html contains all M5 community UI containers and modals', () => {
-  const html = readFileSync(resolve(root, 'apps/web/index.html'), 'utf8');
+  const html = readFileSync(resolve(root, 'index.html'), 'utf8');
 
   // Navigation tab
   assert.ok(html.includes('data-view="community"'), 'Community tab in header nav');
@@ -31,7 +31,7 @@ test('index.html contains all M5 community UI containers and modals', () => {
 
 test('F46 board copy is a personal list on this device', () => {
   const main = readFileSync(resolve(root, 'apps/web/src/main.js'), 'utf8');
-  const html = readFileSync(resolve(root, 'apps/web/index.html'), 'utf8');
+  const html = readFileSync(resolve(root, 'index.html'), 'utf8');
   const boardStart = main.indexOf('const entriesRows');
   const boardEnd = main.indexOf("$('#lb-clear-btn')");
   assert.ok(boardStart > 0 && boardEnd > boardStart, 'leaderboard markup and save handler should exist');
