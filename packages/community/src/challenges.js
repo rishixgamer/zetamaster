@@ -9,7 +9,7 @@ import { validateRules, customRules, BENCHMARK_RULES, OPERATIONS } from '../../c
  * Explicit Invariants:
  * 1. Zero PII: Excludes user names, emails, timestamps, device info, scores, or identifiers.
  * 2. Deterministic: Same seed + rules produces byte-identical tokens.
- * 3. Tamper-evident: Includes a 32-bit FNV-1a checksum to detect link corruption or tampering.
+ * 3. Corruption check: a 32-bit FNV-1a checksum catches accidental corruption. It does not stop a deliberate edit.
  * 4. Offline Replay: Any recipient can recreate the exact question sequence offline.
  */
 
@@ -25,7 +25,7 @@ export class ChallengeCodecError extends Error {
 }
 
 export class ChallengeTamperedError extends ChallengeCodecError {
-  constructor(message = 'Challenge token checksum mismatch — token may be corrupted or tampered') {
+  constructor(message = 'Challenge token checksum mismatch — catches accidental corruption and does not stop a deliberate edit') {
     super(message, 'TAMPERED');
     this.name = 'ChallengeTamperedError';
   }
@@ -217,6 +217,15 @@ export function decodeChallenge(token) {
     rules,
     version: compact.v ?? 1,
   };
+}
+
+/**
+ * Launch payload for a decoded challenge. Always practice (`mode: 'custom'`),
+ * even when `rules` is byte-identical to the benchmark. The checksum does not
+ * stop a deliberate edit, so a challenge run must not count as a benchmark.
+ */
+export function challengePreset({ seed, rules }) {
+  return { seed, rules, mode: 'custom' };
 }
 
 /**

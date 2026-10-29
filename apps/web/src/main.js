@@ -36,7 +36,7 @@ import { downloadJson, downloadCsv, exportBundle, parseExportBundle } from '../.
 import { reconcilePlan, togglePlanStep, completedMinutes, dayLogKey, planRecordFrom } from '../../../packages/training/src/daylog.js';
 import { evaluateBenchmarkRank, evaluatePracticeActivity, COMMUNITY_RANKS, getRankForScore } from '../../../packages/community/src/ranks.js';
 import { evaluateAchievements, ACHIEVEMENT_CATALOG } from '../../../packages/community/src/achievements.js';
-import { encodeChallenge, decodeChallenge, buildChallengeUrl, parseChallengeFromUrl } from '../../../packages/community/src/challenges.js';
+import { encodeChallenge, decodeChallenge, buildChallengeUrl, parseChallengeFromUrl, challengePreset } from '../../../packages/community/src/challenges.js';
 import { verifyBenchmarkSession } from '../../../packages/services/src/anti-cheat.js';
 import { submitLeaderboardScore, getLeaderboardRankings, readLeaderboardConsent, setLeaderboardConsent, sanitizeAlias, LeaderboardStore, leaderboardCandidateSessions } from '../../../packages/services/src/leaderboard.js';
 import { createQuantGenerator } from '../../../packages/quant/src/generator.js';
@@ -1427,7 +1427,7 @@ function renderCommunity() {
         </div>
         <span class="tag">ZERO PII</span>
       </div>
-      <p class="secondary">Share reproducible, tamper-proof challenge links containing only seed and ruleset. Links contain zero personal identifiers or telemetry.</p>
+      <p class="secondary">Share reproducible challenge links containing only a seed and rules. A checksum catches accidental corruption. It does not stop a deliberate edit. Links contain zero personal identifiers or telemetry.</p>
       <div class="challenge-controls">
         <label class="field">
           <span>CHALLENGE SEED</span>
@@ -1714,13 +1714,7 @@ function openChallengeModal(challenge) {
     modal.close();
     setView('train');
     showIdle();
-    startGame({
-      preset: {
-        rules: challenge.rules,
-        seed: challenge.seed,
-        mode: 'custom',
-      },
-    });
+    startGame({ preset: challengePreset(challenge) });
   });
 
   modal.showModal();
