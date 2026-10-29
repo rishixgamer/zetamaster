@@ -307,7 +307,9 @@ const centerOf = sel => {
   if (!el) throw new Error('missing ' + sel);
   el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
   const r = el.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const top = document.elementFromPoint(x, y);
+  return { x, y, hit: !!top && (el.contains(top) || top.contains(el)), covered: top ? top.tagName.toLowerCase() + (top.id ? '#' + top.id : '') : null };
 };
 
 /* Driver bundle: all helpers install once per document as page globals under window.__zmDrive, so
@@ -324,13 +326,36 @@ const PAGE_BUNDLE = `
   window.__zmDrive = { ${Object.keys(PAGE_FNS).join(', ')} };
 `;
 
-/** A real touch tap through the DevTools input pipeline (not el.click()). */
+/** A real touch tap through the DevTools input pipeline (not el.click()). Scrolls the target into view,
+ * waits for the layout to settle, and refuses to tap a point another element covers. */
 async function tap(cdp, sel) {
-  const { x, y } = await ev(cdp, centerOf, sel);
+  await ev(cdp, centerOf, sel);
+  await new Promise(r => setTimeout(r, 100));
+  const { x, y, hit, covered } = await ev(cdp, centerOf, sel);
+  assert(hit, `${sel} is covered by ${covered} at ${Math.round(x)},${Math.round(y)}`);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await new Promise(r => setTimeout(r, 120));
+}
+/** A real key press (Tab, arrows) through the DevTools input pipeline. */
+const KEY_CODES = { Tab: 9, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };
+async function press(cdp, key) {
+  const params = { key, code: key, windowsVirtualKeyCode: KEY_CODES[key] };
+  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...params });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
   await new Promise(r => setTimeout(r, 60));
 }
+const enablePhone = async cdp => {
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await new Promise(r => setTimeout(r, 300));
+};
+/** Leave no phone emulation and no run in progress behind, whatever happened in the phone checks. */
+const resetPhone = async cdp => {
+  await ev(cdp, () => { if (!document.querySelector('#game').classList.contains('hidden')) document.querySelector('#finish').click(); return true; }).catch(() => {});
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false }).catch(() => {});
+  await cdp.send('Emulation.clearDeviceMetricsOverride').catch(() => {});
+};
 const SIX_VIEWS = ['train', 'analytics', 'academy', 'quant', 'community', 'roadmap'];
 
 /* ---------- chrome + cdp boot ---------- */
@@ -672,27 +697,50 @@ async function run(font) {
         totals.fields = Math.max(totals.fields, sweep.fields); totals.buttons = Math.max(totals.buttons, sweep.buttons); totals.grids = Math.max(totals.grids, sweep.grids);
       }
       assert(totals.grids >= 1, 'the heatmap grid should have been checked');
-      // Keyboard reach: Tab stop is on one cell, and a real ArrowRight key moves focus to a different cell.
+      // Keyboard reach: Tab into the grid, then walk every cell (snake order) with real arrow keys.
       await ev(cdp, setNav, 'analytics');
-      const start = await ev(cdp, () => { const c = document.querySelector('#heatmap-root td[role="gridcell"][tabindex="0"]'); c.focus(); return { row: c.dataset.row, col: c.dataset.col }; });
-      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
-      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
-      await new Promise(r => setTimeout(r, 150));
-      const moved = await ev(cdp, () => { const c = document.activeElement; return { role: c.getAttribute('role'), row: c.dataset.row, col: c.dataset.col }; });
-      assert(moved.role === 'gridcell' && Number(moved.col) === Number(start.col) + 1 && moved.row === start.row, `ArrowRight should move focus one cell right: ${JSON.stringify({ start, moved })}`);
+      await ev(cdp, () => { document.querySelector('#hm-scope').focus(); return true; });
+      const cellAt = () => ev(cdp, () => { const c = document.activeElement; return c?.getAttribute('role') === 'gridcell' ? { row: Number(c.dataset.row), col: Number(c.dataset.col) } : null; });
+      let entry = null;
+      for (let i = 0; i < 20 && !entry; i++) { await press(cdp, 'Tab'); entry = await cellAt(); }
+      assert(entry, 'Tab from the heatmap controls never reached the grid');
+      const size = await ev(cdp, () => ({ rows: document.querySelectorAll('#heatmap-root table[role="grid"] tbody tr').length, cols: document.querySelectorAll('#heatmap-root table[role="grid"] tbody tr:first-child td[role="gridcell"]').length }));
+      assert(size.rows > 1 && size.cols > 1, 'grid should have several rows and columns: ' + JSON.stringify(size));
+      let at = await cellAt();
+      while (at && at.col > 0) { await press(cdp, 'ArrowLeft'); at = await cellAt(); }
+      while (at && at.row > 0) { await press(cdp, 'ArrowUp'); at = await cellAt(); }
+      assert(at && at.row === 0 && at.col === 0, 'arrow keys should reach the top-left cell, got ' + JSON.stringify(at));
+      let visited = 1;
+      for (let r = 0; r < size.rows; r++) {
+        const forward = r % 2 === 0;
+        for (let step = 1; step < size.cols; step++) {
+          await press(cdp, forward ? 'ArrowRight' : 'ArrowLeft');
+          const want = { row: r, col: forward ? step : size.cols - 1 - step };
+          const got = await cellAt();
+          assert(got && got.row === want.row && got.col === want.col, `focus should be on cell ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+          visited++;
+        }
+        if (r < size.rows - 1) {
+          await press(cdp, 'ArrowDown');
+          const want = { row: r + 1, col: forward ? size.cols - 1 : 0 };
+          const got = await cellAt();
+          assert(got && got.row === want.row && got.col === want.col, `ArrowDown should reach cell ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+          visited++;
+        }
+      }
+      assert(visited === size.rows * size.cols, `visited ${visited} of ${size.rows * size.cols} cells`);
       await ev(cdp, setNav, 'train');
-      return `6 views swept (up to ${totals.fields} fields, ${totals.buttons} buttons); grid focus ${start.row},${start.col} → ${moved.row},${moved.col}`;
+      return `6 views swept (up to ${totals.fields} fields, ${totals.buttons} buttons); Tab entered the grid and arrow keys reached all ${visited} cells (${size.rows}×${size.cols})`;
     });
 
     await step('F48 phone viewport (375×667, touch): no horizontal overflow, nav links tappable, screenshots', async () => {
-      await cdp.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
-      await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-      await new Promise(r => setTimeout(r, 300));
+      await enablePhone(cdp);
       await mkdir(join(REPO, 'tmp'), { recursive: true });
       const widths = [];
       for (const view of SIX_VIEWS) {
         // The nav is a horizontal strip on phones, so "reachable" means a real tap on the link switches the view.
         await tap(cdp, `.nav-link[data-view="${view}"]`);
+        await new Promise(r => setTimeout(r, 150));
         const active = await ev(cdp, () => document.querySelector('.nav-link.active')?.dataset.view);
         assert(active === view, `tapping the ${view} nav link should open it, active is ${active}`);
         await new Promise(r => setTimeout(r, 300));
@@ -708,48 +756,58 @@ async function run(font) {
     });
 
     await step('F48 phone: a short custom run is playable with the on-screen keypad alone; answer has focus', async () => {
-      await goto(cdp, url); // a fresh phone-sized boot; the setup panel is hidden while the previous results are showing
-      await ev(cdp, installTraps);
-      await ev(cdp, setMode, 'custom');
-      await ev(cdp, setDuration, 15);
-      await ev(cdp, setField, '#add-left-min', '3');
-      await ev(cdp, setField, '#add-left-max', '5');
-      const keypadOn = await ev(cdp, () => document.querySelector('#setting-keypad').checked);
-      assert(keypadOn, 'keypad setting persisted from the earlier step');
-      await tap(cdp, '#start');
-      await waitUntil(cdp, gameVisible, { label: 'phone game open' });
-      const focus = await ev(cdp, () => ({ id: document.activeElement?.id ?? '', keypad: !document.querySelector('#keypad').classList.contains('hidden') }));
-      assert(focus.id === 'answer', 'answer field should have focus when the run starts, got ' + JSON.stringify(focus));
-      assert(focus.keypad, 'keypad should be visible on the phone');
-      let scored = 0;
-      for (let i = 0; i < 3; i++) {
-        const q = await ev(cdp, () => {
-          const text = (document.querySelector('#problem').textContent ?? '').trim();
-          const m = /^(\d+)\s*([+×÷]|−|–)\s*(\d+)$/.exec(text);
-          if (!m) return { error: 'unparseable ' + text };
-          const a = Number(m[1]), b = Number(m[3]);
-          const value = String(m[2] === '+' ? a + b : m[2] === '×' ? a * b : m[2] === '÷' ? a / b : a - b);
-          return { value, score: Number(document.querySelector('#game-score').textContent.match(/\d+/)?.[0] ?? 0) };
-        });
-        assert(!q.error, q.error);
-        for (const ch of q.value) await tap(cdp, `.keypad-key[data-key="${ch}"]`);
-        let after = q.score;
-        for (let i = 0; i < 20 && after === q.score; i++) {
-          await new Promise(r => setTimeout(r, 100));
-          after = await ev(cdp, () => Number(document.querySelector('#game-score').textContent.match(/\d+/)?.[0] ?? 0));
+      try {
+        await enablePhone(cdp);
+        await goto(cdp, url); // a fresh phone-sized boot; the setup panel is hidden while the previous results are showing
+        await ev(cdp, installTraps);
+        await ev(cdp, setMode, 'custom');
+        await ev(cdp, setDuration, 15);
+        await ev(cdp, setField, '#add-left-min', '3');
+        await ev(cdp, setField, '#add-left-max', '5');
+        const keypadOn = await ev(cdp, () => document.querySelector('#setting-keypad').checked);
+        assert(keypadOn, 'keypad setting persisted from the earlier step');
+        await tap(cdp, '#start');
+        await waitUntil(cdp, gameVisible, { label: 'phone game open' });
+        const focus = await ev(cdp, () => ({ id: document.activeElement?.id ?? '', keypad: !document.querySelector('#keypad').classList.contains('hidden') }));
+        assert(focus.id === 'answer', 'answer field should have focus when the run starts, got ' + JSON.stringify(focus));
+        assert(focus.keypad, 'keypad should be visible on the phone');
+        const snapshot = () => ev(cdp, () => ({ answer: document.querySelector('#answer').value, problem: document.querySelector('#problem').textContent, score: Number(document.querySelector('#game-score').textContent.match(/\d+/)?.[0] ?? 0) }));
+        let scored = 0;
+        for (let i = 0; i < 3; i++) {
+          const q = await ev(cdp, () => {
+            const text = (document.querySelector('#problem').textContent ?? '').trim();
+            const m = /^(\d+)\s*([+×÷]|−|–)\s*(\d+)$/.exec(text);
+            if (!m) return { error: 'unparseable ' + text };
+            const a = Number(m[1]), b = Number(m[3]);
+            return { value: String(m[2] === '+' ? a + b : m[2] === '×' ? a * b : m[2] === '÷' ? a / b : a - b) };
+          });
+          assert(!q.error, q.error);
+          const first = await snapshot();
+          for (const ch of q.value) {
+            // Each digit must be seen by the app (answer text changes, or the question is scored) before the next tap.
+            const before = await snapshot();
+            await tap(cdp, `.keypad-key[data-key="${ch}"]`);
+            let now = before;
+            for (let w = 0; w < 20 && now.answer === before.answer && now.score === before.score; w++) {
+              await new Promise(r => setTimeout(r, 100));
+              now = await snapshot();
+            }
+            assert(now.answer !== before.answer || now.score !== before.score, `tapping key ${ch} of ${q.value} (${first.problem}) did nothing: ${JSON.stringify({ before, now })}`);
+          }
+          const after = await snapshot();
+          assert(after.score === first.score + 1, `tapping ${q.value} should score: ${first.score} → ${after.score}`);
+          scored = after.score;
         }
-        assert(after === q.score + 1, `tapping ${q.value} should score: ${q.score} → ${after}`);
-        scored = after;
+        await tap(cdp, '#finish');
+        await waitUntil(cdp, () => !document.querySelector('#results').classList.contains('hidden'), { label: 'phone results' });
+        const res = await ev(cdp, resultsState);
+        assert(Number(res.score) === scored && /practice\/unverified/.test(res.detail), 'phone run saved as practice: ' + JSON.stringify(res));
+        const o = await ev(cdp, horizontalOverflow, 375);
+        assert(o.scroll <= 375 && o.inner <= 375, `results screen overflows: scrollWidth ${o.scroll}, innerWidth ${o.inner}, widest: ${o.wide.join(' | ')}`);
+        return `scored ${scored} by tapping keypad keys only`;
+      } finally {
+        await resetPhone(cdp);
       }
-      await tap(cdp, '#finish');
-      await waitUntil(cdp, () => !document.querySelector('#results').classList.contains('hidden'), { label: 'phone results' });
-      const res = await ev(cdp, resultsState);
-      assert(Number(res.score) === scored && /practice\/unverified/.test(res.detail), 'phone run saved as practice: ' + JSON.stringify(res));
-      const o = await ev(cdp, horizontalOverflow, 375);
-      assert(o.scroll <= 375 && o.inner <= 375, `results screen overflows: scrollWidth ${o.scroll}, innerWidth ${o.inner}, widest: ${o.wide.join(' | ')}`);
-      await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
-      await cdp.send('Emulation.clearDeviceMetricsOverride');
-      return `scored ${scored} by tapping keypad keys only`;
     });
 
     await step('F43: 120s standard benchmark draws a fresh seed and stores benchmark:true (real time)', async () => {
