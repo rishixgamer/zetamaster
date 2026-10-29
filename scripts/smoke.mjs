@@ -714,12 +714,14 @@ async function run(font) {
       return q.firstTitle;
     });
 
-    await step('a11y: every view has named controls, unique ids and a keyboard-reachable grid', async () => {
+    await step('a11y: every view has named controls, unique ids, no raw values as text and a keyboard-reachable grid', async () => {
       const totals = { fields: 0, buttons: 0, grids: 0 };
       for (const view of SIX_VIEWS) {
         await ev(cdp, setNav, view);
         await new Promise(r => setTimeout(r, 250));
         if (view === 'analytics') await waitUntil(cdp, () => document.querySelectorAll('#heatmap-root td[role="gridcell"]').length > 0, { label: 'heatmap grid' });
+        const leaked = await ev(cdp, view => (document.querySelector('#view-' + view)?.innerText ?? '').match(/\b(undefined|null|NaN)\b|\[object Object\]/g), view);
+        assert(!leaked, `${view}: the page shows a raw value as text: ${leaked}`);
         const sweep = await ev(cdp, a11ySweep);
         assert(sweep.problems.length === 0, `${view}: ` + sweep.problems.slice(0, 6).join('; '));
         totals.fields = Math.max(totals.fields, sweep.fields); totals.buttons = Math.max(totals.buttons, sweep.buttons); totals.grids = Math.max(totals.grids, sweep.grids);
