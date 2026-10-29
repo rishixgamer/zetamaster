@@ -4,6 +4,8 @@
 
 > **Repository status: 54 features implemented, F46 partial.** The playable browser app includes a benchmark-fidelity parity audit, honest instrumentation, and an opt-in randomized policy-A/B protocol. `docs/FEATURE_MATRIX.md` provides the status and minimum acceptance criterion of each feature. `implemented` means a feature is usable in the current app, never "training gains proven". F46 is a personal score board stored in this browser.
 
+**Version 1.0.0** — see the [changelog](CHANGELOG.md) for what shipped and the known limitations.
+
 ## Launch in 30 seconds
 
 Requirements: **Node.js 20+**. No package installation, npm account, API key, cloud database or build step is required.
