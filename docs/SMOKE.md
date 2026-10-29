@@ -60,10 +60,17 @@ buttons, input events) — nothing calls the app's internals directly:
 | F46 | Community view renders; the on-device board's save switch defaults off, turning it on enables save, the view does not say Global, and a stored row is still there after reload |
 | F47 | A benchmark-shaped challenge link says the checksum catches accidental corruption and does not stop a deliberate edit. Accepting it starts `CUSTOM PRACTICE`, not a benchmark |
 | M6 | Quant view renders its panels after the `$` fix |
+| a11y | on each of the six views: every `input`/`select` has an accessible name (label, `aria-label`, `aria-labelledby` or `title`), every button has text or a name, no duplicate `id`s, and the heatmap `role="grid"` has exactly one Tab stop and a real ArrowRight key press moves focus one cell |
+| F48 | phone pass (375×667, mobile and touch emulation): all six views are opened by a real tap on their nav link, none scrolls sideways (`scrollWidth` and `innerWidth` stay ≤ 375 — mobile emulation widens `innerWidth` to fit overflowing content, so it is compared with the fixed device width), and a screenshot of each is saved to `tmp/smoke-phone-<view>.png` |
+| F48 | on the phone, a 3-question custom run is played with taps on the on-screen keypad only; the answer field has focus when the run starts; the run is saved as practice |
 | F43 | a **full 120-second, real-time standard run** stores `benchmark: true` with `zetamac-default-v1` rules and full elapsed time. The seed field is disabled; a typed seed is ignored and the stored seed is a fresh UUID (`seedSource: random`) |
 | isolation | across every stored session, `benchmark === true` iff it is a complete standard run — practice is never a score |
 | F19 | interrupted drill records no spaced-review entry |
 | cleanup | delete-local-history empties the stores |
+
+The accessibility and phone checks are basic structural checks. They are **not a WCAG audit**: nothing
+here measures colour contrast, screen-reader output, focus order beyond the heatmap grid, or touch-target
+size. Adding axe-core would be a new dependency and needs an ADR first (ADR 0001: no dependencies).
 
 Details on purpose (pinned by unit tests, not duplicated here): generator distribution parity,
 review scheduling math, import sanitization.

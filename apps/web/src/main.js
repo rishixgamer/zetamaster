@@ -746,7 +746,7 @@ function renderAnalytics(){
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Current bottlenecks</h2>${worst.length?worst.map(w=>`<p class="secondary"><strong>${opNames[w.key]}</strong> · ${fmt(w.rawMedianMs)} median · ${w.count} observations</p>`).join(''):'<p class="secondary">More solved questions needed before identifying reliable weaknesses.</p>'}<p class="small muted">Heuristic, sample-size-smoothed estimates; not a validated cognitive assessment.</p></div>
     <div class="panel"><h2 class="section-title">Slowest questions</h2>${allEvents.length?[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5).map(q=>`<div class="history-row"><span>${esc(`${q.left} ${q.symbol} ${q.right} = ${q.answer}`)}</span><strong>${fmt(q.responseMs)}</strong><span>${esc(q.op)}</span></div>`).join(''):'<div class="empty">No solved questions yet.</div>'}<button type="button" class="secondary-btn" id="replay-slow" ${allEvents.length?'':'disabled'}>Replay slowest five →</button></div></div>
     <div class="panel"><h2 class="section-title">Recent sessions</h2>${recent.length?recent.map(s=>{const excluded=seedReport.excluded.has(s);return `<div class="history-row"><span>${esc(new Date(s.startedAt).toLocaleString())} · ${esc(s.mode)}${s.benchmark?' · verified':''}${excluded?' · repeated seed':''}</span><strong>${esc(s.score)}</strong><span>${!s.benchmark?'Practice':excluded?'Excluded':'Standard'}</span></div>`;}).join(''):'<div class="empty">Your first session will appear here.</div>'}</div>
-    <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" accept="application/json" hidden></div><p class="small muted" id="seed-reuse-count">Repeated benchmark seeds excluded from scores: ${seedReport.excludedCount}. The earliest run on a seed still counts. Later runs stay in history and stay out of the median, personal best, 8-of-10 goal, progression, rank and leaderboard submission.</p><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
+    <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" aria-label="Choose a ZetaMaster JSON export to import" accept="application/json" hidden></div><p class="small muted" id="seed-reuse-count">Repeated benchmark seeds excluded from scores: ${seedReport.excludedCount}. The earliest run on a seed still counts. Later runs stay in history and stay out of the median, personal best, 8-of-10 goal, progression, rank and leaderboard submission.</p><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
   renderConsistency();
   renderProgression();
   renderForecast();
@@ -1457,7 +1457,7 @@ function renderCommunity() {
         </div>
         <button type="button" class="primary-btn" id="ch-generate-btn">Generate Challenge URL ↗</button>
         <div class="copy-row" id="ch-url-row" style="display:none;">
-          <input type="text" id="ch-url-output" readonly>
+          <input type="text" id="ch-url-output" aria-label="Challenge URL" readonly>
           <button type="button" class="secondary-btn" id="ch-copy-btn">📋 Copy</button>
         </div>
         <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
@@ -1510,7 +1510,7 @@ function renderCommunity() {
         <button type="button" class="primary-btn" id="lb-submit-latest-btn" ${consent.enabled ? '' : 'disabled'}>Save latest benchmark</button>
       </div>
       <div id="lb-status-msg" style="font-size:12px;margin-bottom:8px;"></div>
-      <table class="leaderboard-table">
+      <div class="table-scroll"><table class="leaderboard-table">
         <thead>
           <tr>
             <th>Rank</th>
@@ -1523,7 +1523,7 @@ function renderCommunity() {
         <tbody>
           ${entriesRows}
         </tbody>
-      </table>
+      </table></div>
       <div class="subline" style="margin-top:12px;">
         <button type="button" class="text-btn" id="lb-clear-btn">Clear local cache / forget entries</button>
       </div>
