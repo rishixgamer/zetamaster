@@ -348,6 +348,56 @@ async function run(font) {
       return 'title ' + (await ev(cdp, () => document.title));
     });
 
+    await step('F46: community board stays on this device and the save switch defaults off', async () => {
+      await ev(cdp, setNav, 'community');
+      await waitUntil(cdp, () => document.querySelector('#view-community')?.classList.contains('active') && document.querySelector('#lb-consent-toggle'), { label: 'community board' });
+      const state = await ev(cdp, () => {
+        const view = document.querySelector('#view-community');
+        const toggle = document.querySelector('#lb-consent-toggle');
+        const panel = toggle.closest('.panel');
+        const button = document.querySelector('#lb-submit-latest-btn');
+        return {
+          toggleOff: toggle.checked === false,
+          submitDisabled: button.disabled === true,
+          viewText: view.innerText,
+          panelText: panel.innerText,
+        };
+      });
+      assert(state.toggleOff, 'save switch should default off');
+      assert(state.submitDisabled, 'save button should be disabled while the switch is off');
+      assert(!/\bglobal\b/i.test(state.viewText), 'community view says Global');
+      assert(!/\bverified\b/i.test(state.panelText), 'board panel says Verified: ' + state.panelText.slice(0, 240));
+      assert(!state.panelText.includes('↗'), 'board panel uses an external-link arrow');
+      assert(/never leave this browser/i.test(state.panelText), 'board should say entries never leave this browser');
+      await ev(cdp, click, '#lb-consent-toggle');
+      const on = await ev(cdp, () => ({
+        checked: document.querySelector('#lb-consent-toggle').checked,
+        disabled: document.querySelector('#lb-submit-latest-btn').disabled,
+      }));
+      assert(on.checked === true && on.disabled === false, 'turning the switch on enables save: ' + JSON.stringify(on));
+      await ev(cdp, click, '#lb-consent-toggle');
+      const off = await ev(cdp, () => document.querySelector('#lb-consent-toggle').checked === false && document.querySelector('#lb-submit-latest-btn').disabled === true);
+      assert(off, 'turning the switch off disables save again');
+      // A row written to the board's storage key must still be there after a real reload.
+      // The memory-only singleton drops it. This does not submit a run: the fast smoke solves
+      // are below the replay check's latency floor, so they are not board entries.
+      await ev(cdp, async () => {
+        const mod = await import('/packages/services/src/leaderboard.js');
+        localStorage.setItem(mod.LEADERBOARD_STORE_KEY, JSON.stringify([{
+          alias: 'SmokeBoard', score: 42, verifiedAt: '2026-10-18T12:00:00.000Z', meanLatencyMs: 1400, evidenceHash: 'smoke',
+        }]));
+        return true;
+      });
+      await goto(cdp, url);
+      await ev(cdp, installTraps);
+      await ev(cdp, setNav, 'community');
+      await waitUntil(cdp, () => /SmokeBoard/.test(document.querySelector('.leaderboard-table')?.innerText ?? ''), { label: 'saved row after reload' });
+      const saved = await ev(cdp, () => document.querySelector('.leaderboard-table').innerText);
+      assert(/\b42\b/.test(saved), 'saved score missing after reload: ' + saved.slice(0, 200));
+      await ev(cdp, setNav, 'train');
+      return 'switch defaults off; SmokeBoard 42 survived reload';
+    });
+
     await step('F02: custom mode opens the range panel; progress select serves the field', async () => {
       const mode = await ev(cdp, setMode, 'custom');
       assert(mode.rangesOpen, 'range panel should open in custom mode');

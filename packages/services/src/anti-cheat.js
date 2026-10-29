@@ -3,19 +3,18 @@ import { createGenerator } from '../../core/src/generator.js';
 import { mean } from '../../analytics/src/stats.js';
 
 /**
- * Anti-Cheat and Session Verification Engine (Milestone M5).
+ * Client-side session replay check (Milestone M5).
  *
- * Implements server-side / gatekeeper verification of arithmetic benchmark sessions
- * before public leaderboard ranking or duel resolution.
+ * Re-simulates a benchmark in this browser and compares events draw-for-draw.
+ * A pass means the recorded run matches its seed. It is not an independent
+ * check. That starts only when a server re-runs the same check, which this
+ * build does not do. A person who can edit this file can bypass it.
  *
- * Threat Model:
- * 1. Untrusted Client: In an offline-first or browser app, local memory and storage
- *    can be manipulated. We cannot trust a client's reported score without deterministic proof.
- * 2. Deterministic Replay: Because questions are generated via a seeded PRNG, we can
- *    re-simulate the exact sequence of questions and compare every event draw-for-draw.
- * 3. Physiological Human Limits: Cognitive recognition, calculation, and motor key entry
- *    have strict physiological bounds. Superhuman latencies (< 100 ms) or bot-like
- *    uniform cadences (zero variance) indicate non-human automated play.
+ * What the check looks for:
+ * 1. Recorded events must match the seeded problem sequence.
+ * 2. Reported score must match the count of correct answers in that replay.
+ * 3. Physiological bounds: latencies under 100 ms, or a cadence with almost no
+ *    variation, fail the check inside this browser.
  */
 
 export const MIN_HUMAN_RESPONSE_MS = 100; // Human cognitive-motor floor

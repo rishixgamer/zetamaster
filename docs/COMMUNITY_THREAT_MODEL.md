@@ -2,9 +2,9 @@
 
 ## Overview
 
-The ZetaMaster community subsystem provides sustained benchmark ranking (F44), skill-based achievements (F45), global leaderboards (F46), challenge URL sharing (F47), and head-to-head duels.
+The ZetaMaster community subsystem provides sustained benchmark ranking (F44), skill-based achievements (F45), a personal score board stored on this device (F46), and challenge URL sharing (F47). Head-to-head duel code in `packages/services/src/duels.js` is not imported by the app. The only duels a person can start are the Academy strategy duels.
 
-Because ZetaMaster is offline-first and runs in untrusted user browsers, the community architecture adheres to strict security, privacy, and verification invariants.
+Because ZetaMaster is offline-first and runs in untrusted user browsers, the checks below run in that browser. They are not an independent trust boundary.
 
 ---
 
@@ -13,8 +13,8 @@ Because ZetaMaster is offline-first and runs in untrusted user browsers, the com
 ### A. Untrusted Client Environment
 - **Threat:** A malicious user or browser extension can tamper with JavaScript memory, modify DOM elements, intercept HTTP requests, forged session timestamps, or forge completed scores (e.g., claiming a score of 250 in 120s with arbitrary answer strings).
 - **Mitigation:**
-  1. **Deterministic PRNG Replay:** All arithmetic problems are generated from a deterministic PRNG seed (`createGenerator(BENCHMARK_RULES, seed)`). The verification engine (`packages/services/src/anti-cheat.js`) re-simulates the exact problem sequence draw-for-draw. Any discrepancy in operands, operations, or expected answers results in immediate rejection (`QUESTION_REPLAY_MISMATCH`).
-  2. **Score Integrity Check:** Reported scores must match the exact count of verified correct answers.
+  1. **Deterministic PRNG Replay:** All arithmetic problems are generated from a deterministic PRNG seed (`createGenerator(BENCHMARK_RULES, seed)`). The check in `packages/services/src/anti-cheat.js` re-simulates the exact problem sequence draw-for-draw in the same browser that produced the run. Any discrepancy in operands, operations, or expected answers results in immediate rejection (`QUESTION_REPLAY_MISMATCH`). This is a self-consistency check. It becomes a trust boundary only when a server re-runs it. This build has no such server, and a person who can edit the page can bypass the check.
+  2. **Score Integrity Check:** Reported scores must match the exact count of correct answers in that same-browser replay.
 
 ### B. Automated Bot Scripting & Synthetic Inputs
 - **Threat:** An automated bot script or macro can read problem elements and inject keystrokes programmatically.
@@ -27,7 +27,7 @@ Because ZetaMaster is offline-first and runs in untrusted user browsers, the com
 - **Threat:** Practice runs, drills with relaxed rules, custom timers, or question budgets could be submitted as standard benchmarks.
 - **Mitigation:**
   - Standard benchmarks strictly require `mode === 'benchmark'`, `benchmark === true`, `elapsedMs >= 120000`, and rules byte-identical to `BENCHMARK_RULES`.
-  - Practice modes never qualify for verified rankings or benchmark-exclusive achievements.
+  - Practice modes never qualify for the on-device board or for benchmark-exclusive achievements.
 
 ---
 
@@ -36,7 +36,7 @@ Because ZetaMaster is offline-first and runs in untrusted user browsers, the com
 ### A. Zero Telemetry by Default (Offline-First)
 - All game features, local ranks, achievements, and challenge URLs operate **100% offline without network connectivity**.
 - **No analytics SDKs, tracking pixels, cookies, or remote pings.**
-- Affirmative opt-in consent is required before any leaderboard ranking or duel interaction can occur (`LEADERBOARD_CONSENT_KEY`, `DUEL_CONSENT_KEY`). Consent defaults to `OFF`.
+- The on-device board has a save switch that defaults to off (`LEADERBOARD_CONSENT_KEY`). Turning it on only allows a score to be written in this browser. It is not consent to send a score anywhere. `DUEL_CONSENT_KEY` gates `duels.js`, which the UI does not reach.
 
 ### B. Zero PII in Challenge Sharing (F47)
 - Challenge URLs (`ChallengeCodec`) encode **strictly** ruleset parameters and problem seeds:
@@ -52,7 +52,7 @@ Because ZetaMaster is offline-first and runs in untrusted user browsers, the com
 
 ## 3. Anti-Abuse & Rate Limiting
 
-- **Rate Limiting:** Each client / player token is limited to at most 5 submissions per hour (`MAX_SUBMISSIONS_PER_HOUR = 5`).
+- **Rate Limiting:** Each in-memory token is limited to at most 5 saves per hour (`MAX_SUBMISSIONS_PER_HOUR = 5`). The cap lives in a `Map` in this browser and clears on reload. It is not a server limit.
 - **Right to Be Forgotten:** Players can wipe all local leaderboard data, forget stored handles, and clear submissions via the UI at any time.
 
 ---
