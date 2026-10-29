@@ -1411,7 +1411,7 @@ function renderCommunity() {
         </div>
         <div class="rank-stat">
           <div class="rank-stat-label">Next Rank</div>
-          <div class="rank-stat-val">${rankEval.nextRank ? esc(rankEval.nextRank.title) + ' (+' + rankEval.pointsToNext + ')' : 'MAX TIER'}</div>
+          <div class="rank-stat-val">${rankEval.nextRank ? esc(rankEval.nextRank.title) + (Number.isFinite(rankEval.pointsToNext) ? ' (+' + rankEval.pointsToNext + ')' : '') : 'MAX TIER'}</div>
         </div>
       </div>
       <p class="small muted">${esc(rankEval.isolationNotice)} Practice runs: ${practiceStats.sessionsCount} (${practiceStats.totalSolves} solves) tracked separately.</p>
