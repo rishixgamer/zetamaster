@@ -33,13 +33,17 @@ export function isAnswerPrefix(value, answer) { return String(answer).startsWith
  *   how long the problem was shown and never counts towards the score or the review evidence.
  */
 export class ArithmeticSession {
-  constructor({ rules, generator, clock = () => performance.now(), wallClock = () => new Date().toISOString(), mode = 'benchmark', seed = '', captureTrace = true, drill = null, provenance = null }) {
+  constructor({ rules, generator, clock = () => performance.now(), wallClock = () => new Date().toISOString(), mode = 'benchmark', seed = '', seedSource = null, captureTrace = true, drill = null, provenance = null }) {
     this.rules = rules;
     this.generator = generator;
     this.clock = clock;
     this.wallClock = wallClock;
     this.mode = mode;
     this.seed = seed;
+    // `random` | `user` | `preset`. Omitted means a pre-seedSource caller: still eligible.
+    // Any other explicit source, including an unrecognized string, is not a benchmark.
+    this.seedSource = seedSource === 'random' || seedSource === 'user' || seedSource === 'preset' ? seedSource : null;
+    this.seedCountsAsBenchmark = seedSource == null || seedSource === 'random';
     this.captureTrace = captureTrace;
     this.drill = drill;
     // Run provenance (F20/F21): launch-surface/policy context riding on the result as read-only
@@ -183,8 +187,9 @@ export class ArithmeticSession {
     this.state = 'finished'; this.finishedIso = this.wallClock();
     this.result = {
       id: `${this.startedIso}-${this.seed}`, startedAt: this.startedIso, finishedAt: this.finishedIso, mode: this.mode, seed: this.seed,
+      ...(this.seedSource ? { seedSource: this.seedSource } : {}),
       rules: this.rules, engineVersion: ENGINE_VERSION, endedEarly: !fullDuration,
-      benchmark: this.mode === 'benchmark' && benchmarkEquivalent(this.rules) && fullDuration,
+      benchmark: this.mode === 'benchmark' && benchmarkEquivalent(this.rules) && fullDuration && this.seedCountsAsBenchmark,
       score: this.score, elapsedMs, events: this.events, finalUnanswered, integrity: { ...this.integrity },
       missedCount: this.missedEvents.length,
       missedEvents: [...this.missedEvents],

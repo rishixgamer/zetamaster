@@ -1,6 +1,7 @@
 import { benchmarkEquivalent, BENCHMARK_RULES, OPERATIONS } from '../../core/src/rulesets.js';
 import { makeQuestion } from '../../core/src/generator.js';
 import { MAX_WRONG_ATTEMPTS } from '../../core/src/session.js';
+import { repeatedBenchmarkSeedReport } from '../../core/src/seed-policy.js';
 import { SKILL_TAXONOMY_VERSION, skillCellFromId } from '../../training/src/skills.js';
 import { sanitizeProvenance } from '../../training/src/provenance.js';
 
@@ -111,9 +112,18 @@ export function sanitizeImportedDailyPlan(s) {
   };
 }
 
+/** `random` may be a benchmark. `user` / `preset` may not. Absent is a pre-seedSource record. */
+function importedSeedSource(value) {
+  if (value == null) return { seedSource: null, allowsBenchmark: true };
+  if (value === 'random') return { seedSource: 'random', allowsBenchmark: true };
+  if (value === 'user' || value === 'preset') return { seedSource: value, allowsBenchmark: false };
+  return { seedSource: null, allowsBenchmark: false };
+}
+
 /**
  * Validate an imported session. Returns null when unusable. Benchmark status is recomputed from the
- * rules snapshot, mode and duration — an imported `benchmark: true` flag is never trusted on its own.
+ * rules snapshot, mode, duration and seed source — an imported `benchmark: true` flag is never trusted
+ * on its own. A missing `seedSource` stays eligible (sessions recorded before the field existed).
  */
 export function sanitizeImportedSession(s) {
   if (!s || typeof s !== 'object' || !Number.isFinite(s.score) || !Array.isArray(s.events) || typeof s.startedAt !== 'string' || Number.isNaN(Date.parse(s.startedAt))) return null;
@@ -123,13 +133,15 @@ export function sanitizeImportedSession(s) {
   const mode = safeText(s.mode, 24) || 'custom';
   const elapsedMs = Number.isFinite(s.elapsedMs) ? s.elapsedMs : 0;
   const isBenchmarkRules = rules !== null && benchmarkEquivalent(rules);
-  const benchmark = s.benchmark === true && mode === 'benchmark' && isBenchmarkRules && elapsedMs >= BENCHMARK_RULES.durationSeconds * 1000 && s.endedEarly !== true
+  const source = importedSeedSource(s.seedSource);
+  const benchmark = source.allowsBenchmark && s.benchmark === true && mode === 'benchmark' && isBenchmarkRules && elapsedMs >= BENCHMARK_RULES.durationSeconds * 1000 && s.endedEarly !== true
     && Math.trunc(s.score) === events.filter(e => e.correct).length;
   return {
     id: safeText(s.id, 120) || s.startedAt,
     startedAt: new Date(Date.parse(s.startedAt)).toISOString(),
     finishedAt: typeof s.finishedAt === 'string' && !Number.isNaN(Date.parse(s.finishedAt)) ? new Date(Date.parse(s.finishedAt)).toISOString() : null,
-    mode, seed: safeText(s.seed, 80), rules: isBenchmarkRules ? BENCHMARK_RULES : rules,
+    mode, seed: safeText(s.seed, 80), ...(source.seedSource ? { seedSource: source.seedSource } : {}),
+    rules: isBenchmarkRules ? BENCHMARK_RULES : rules,
     engineVersion: safeText(s.engineVersion, 24) || 'zm-engine-1',
     endedEarly: s.endedEarly === true, benchmark, imported: true,
     score: Math.max(0, Math.trunc(s.score)), elapsedMs, events,
@@ -144,4 +156,18 @@ export function sanitizeImportedSession(s) {
 /** Single evaluation point so the same validated record is reused, not re-derived per key. */
 function revalidatedProvenance(s) {
   return sanitizeProvenance(s?.provenance);
+}
+
+/**
+ * Mark later benchmark runs that share a non-empty seed. Does not change `benchmark` — stored
+ * history is not rewritten. The flag is only about this array: a duplicate of a seed already in
+ * the database is caught when score metrics recompute over the full history.
+ */
+export function flagRepeatedBenchmarkSeeds(sessions) {
+  if (!Array.isArray(sessions)) return [];
+  const excluded = repeatedBenchmarkSeedReport(sessions).excluded;
+  return sessions.map(session => {
+    if (!session || !excluded.has(session) || session.seedReuseExcluded === true) return session;
+    return { ...session, seedReuseExcluded: true };
+  });
 }

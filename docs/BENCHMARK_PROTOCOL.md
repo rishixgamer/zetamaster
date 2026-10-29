@@ -24,8 +24,10 @@ For a completed run to count toward standard score progress:
 3. The full 120-second interval elapses; manual termination is unverified.
 4. No question skip, hint or adaptive weighting.
 5. Score counts correctly solved questions, not keystroke errors. Unanswered final question is retained but does not count.
+6. The seed was drawn for that launch (`seedSource === 'random'`). A seed typed into the field or copied from a preset (a probe, a challenge) is practice, even when the rules and the 120 seconds match. Sessions recorded before `seedSource` existed have no source field and keep their stored status.
+7. The seed is not a later copy of another benchmark in the same history. The earliest run on a non-empty seed stays eligible. The 2nd and later runs stay stored as benchmarks and drop out of the median, personal best, 8-of-10 goal, progression, rank and leaderboard submission. A blank seed is not a repeat, so unseeded legacy runs stay independent. Nothing in history is rewritten.
 
-Practice scores are always labeled. Benchmark trend and target mastery use *only* standard runs.
+Practice scores are always labeled. Benchmark trend and target mastery use *only* standard runs that pass the rules above. The original game draws with `Math.random` and cannot be seeded; a chosen sequence is a practice tool here, not a second benchmark.
 
 ## Target definition
 

@@ -1,6 +1,6 @@
 # Benchmark consistency metrics (F43, F15)
 
-Source: `packages/analytics/src/consistency.js`. Input is **verified standard benchmarks only** (`benchmark === true`, oldest first). Practice, drills, replays, quant runs and imports that fail eligibility never enter these numbers.
+Source: `packages/analytics/src/consistency.js`. Input is **verified standard benchmarks only** (`benchmark === true`, oldest first). Practice, drills, replays, quant runs and imports that fail eligibility never enter these numbers. A later run on the same non-empty seed is stored as a benchmark and left out of this series; the earliest run on that seed stays. A blank seed is not a repeat.
 
 ## Goal
 

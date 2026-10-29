@@ -19,12 +19,12 @@
 | Wrong answers | no penalty, nothing recorded as "wrong" | same — no penalty and no game effect; wrong submissions and wrong values are local, bounded telemetry (engine 3 keeps a per-question value history) | ✅ parity |
 | Timer | wall clock (`Date.now`), 1 s `setInterval`; game ends on the first tick where `120 − floor(elapsed/1000) ≤ 0`; answers between 120 000 ms and that tick still count | monotonic clock, strict 120 000 ms cutoff | ≈ see below |
 | Countdown display | integer "Seconds left" updated each second | `m:ss`, updated ~60 ms | cosmetic |
-| RNG | `Math.random` | seeded `mulberry32` | ≈ see below |
+| RNG | `Math.random` (unseedable) | seeded `mulberry32`; a benchmark draws a fresh seed, and a chosen seed is practice-only | ≈ see below |
 
 ## Known, documented deviations
 
 1. **Timer cutoff.** The original accepts answers until its next 1-second interval tick at or after 120 s (typically a few ms; longer if the browser delays timers). ZetaMaster stops accepting answers at exactly 120 000 ms on a monotonic clock. Effect on score: at most one problem in rare cases, biased *against* ZetaMaster scores. We keep the strict cutoff because it is reproducible.
-2. **RNG.** Both produce uniform floats; sequences differ. Statistical properties are tested (chi-square on operation and operand marginals). Seeded replays are a ZetaMaster-only feature.
+2. **RNG.** Both produce uniform floats; sequences differ. Statistical properties are tested (chi-square on operation and operand marginals). Seeded replays are a ZetaMaster-only feature, and they are practice: a standard benchmark always draws a fresh seed, so a typed or preset seed cannot enter benchmark scores.
 3. **Engine-1 sessions** (before this audit) accepted answers with leading zeros and stripped non-digit keystrokes. Practically no score effect, but sessions now carry `engineVersion` so they can be told apart.
 
 ## What this audit does not establish

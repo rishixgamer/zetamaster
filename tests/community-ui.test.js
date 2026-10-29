@@ -77,9 +77,11 @@ test('complete M5 community flow: rank, achievements, challenge URL, and verifie
   const check = verifyBenchmarkSession(session);
   assert.equal(check.verified, true);
 
-  // 2. Rank evaluation with 5 benchmarks
+  // 2. Rank evaluation with 5 benchmarks. Each run needs its own seed: a repeated seed
+  // counts once, which is the benchmark-integrity rule, not five scores from one sequence.
   const benchmarkRuns = Array.from({ length: 5 }, (_, idx) => ({
     ...session,
+    seed: `${seed}-${idx}`,
     startedAt: new Date(Date.UTC(2026, 9, 10 + idx)).toISOString(),
   }));
   const rankEval = evaluateBenchmarkRank(benchmarkRuns);

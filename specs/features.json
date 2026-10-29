@@ -15,7 +15,7 @@
    "status": "implemented",
    "owner": "core",
    "acceptance": [
-    "120s preset and inverse operations; parity audited against original client 2026-10-17 (docs/PARITY_AUDIT.md, tests/parity.test.js); remaining deviations: strict timer cutoff and PRNG"
+    "120s preset and inverse operations; parity audited against original client 2026-10-17 (docs/PARITY_AUDIT.md, tests/parity.test.js); remaining deviations: strict timer cutoff and PRNG. A standard benchmark always draws a fresh random seed; a chosen or preset seed is practice"
    ],
    "dependencies": [],
    "benchmarkSafe": true
@@ -540,7 +540,7 @@
    "status": "implemented",
    "owner": "analytics",
    "acceptance": [
-    "8-of-10 70+ goal with progress, 8th-best gap, minimum runs-to-goal, rolling median and 10th-90th band chart, Theil-Sen trend; standard benchmarks only (docs/CONSISTENCY.md)"
+    "8-of-10 70+ goal with progress, 8th-best gap, minimum runs-to-goal, rolling median and 10th-90th band chart, Theil-Sen trend; standard benchmarks only, later runs on a repeated seed excluded (docs/CONSISTENCY.md)"
    ],
    "dependencies": [],
    "benchmarkSafe": true
