@@ -116,8 +116,8 @@ Record shape (all times are stored ISO strings; timezone math never touches loca
 }
 ```
 
-Storage (`packages/storage/src/db.js`): IndexedDB `zetamaster-v1` is now schema **version 2** —
-`onupgradeneeded` adds a `skillReviews` object store (keyPath `id`) additively; existing `sessions`
+Storage (`packages/storage/src/db.js`): IndexedDB `zetamaster-v1` went to schema **version 2** here —
+`onupgradeneeded` added a `skillReviews` object store (keyPath `id`) additively (the shipped schema is now version 3); existing `sessions`
 data is untouched, so v1 users upgrade in place. The localStorage fallback keeps a mirror under
 `zetamaster-skill-reviews-v1`, capped like sessions at the 500 most recent writes. `listSkillReviews`
 / `saveSkillReview` (replace-by-id) / `recordSkillReview(skillId, outcome, now)` / `importSkillReviews`
