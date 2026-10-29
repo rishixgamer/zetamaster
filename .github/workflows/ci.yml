@@ -9,3 +9,28 @@ jobs:
         with:
           node-version: '22'
       - run: npm run check
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Browser smoke
+        env:
+          CHROME_BIN: google-chrome
+          SMOKE_NO_SANDBOX: '1'
+        run: |
+          mkdir -p tmp
+          set -o pipefail
+          npm run smoke 2>&1 | tee tmp/smoke.log
+      - name: Upload smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-failure
+          path: |
+            tmp/*.png
+            tmp/smoke.log
+          if-no-files-found: warn
