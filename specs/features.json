@@ -573,10 +573,10 @@
    "id": "F46",
    "area": "Community",
    "title": "Global leaderboards",
-   "status": "implemented",
+   "status": "partial",
    "owner": "services",
    "acceptance": [
-    "Explicit opt-in server verified rankings with abuse and privacy protections"
+    "Local board of this browser's own scores, behind a default-off save switch, plus a client-side replay check that the run matches its seed. Missing: a server, accounts, and independent verification. Entries never leave the browser."
    ],
    "dependencies": [],
    "benchmarkSafe": false

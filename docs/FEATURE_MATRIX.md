@@ -49,7 +49,7 @@ The 55 entries below correspond to every numbered product feature in the brainst
 | F43 | Performance consistency scoring | implemented | `analytics` | 8-of-10 70+ goal with progress, 8th-best gap, minimum runs-to-goal, rolling median and 10th-90th band chart, Theil-Sen trend; standard benchmarks only, later runs on a repeated seed excluded (docs/CONSISTENCY.md) |
 | F44 | Ranking system | implemented | `community` | Sustained verified benchmark ranks separated from practice ranks |
 | F45 | Skill-based achievements | implemented | `community` | Grant goals based on correct verified events; avoid rewarding idle screen time |
-| F46 | Global leaderboards | implemented | `services` | Explicit opt-in server verified rankings with abuse and privacy protections |
+| F46 | Global leaderboards | partial | `services` | Local board of this browser's own scores, behind a default-off save switch, plus a client-side replay check that the run matches its seed. Missing: a server, accounts, and independent verification. Entries never leave the browser. |
 | F47 | Challenge sharing | implemented | `services/web` | Share ruleset+seed via URL; ensure no PII in shared links |
 | F48 | Minimalist keyboard-first design | implemented | `web` | Focused answer entry, responsive layout, optional browser PWA install |
 | F49 | Fractions and decimals | implemented | `quant` | Exact rational representation, reduction, mixed fraction/decimal parsing, deterministic arithmetic drill generator, and equivalence checking (packages/quant/src/rational.js, packages/quant/src/fractions.js, tests/rational.test.js, tests/fractions.test.js) |

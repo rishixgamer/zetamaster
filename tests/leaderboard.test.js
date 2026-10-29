@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import {
   readLeaderboardConsent,
   setLeaderboardConsent,
@@ -8,6 +10,7 @@ import {
   sanitizeAlias,
   LeaderboardStore,
   LeaderboardUnavailableError,
+  LEADERBOARD_STORE_KEY,
 } from '../packages/services/src/leaderboard.js';
 import { BENCHMARK_RULES } from '../packages/core/src/rulesets.js';
 import { createGenerator } from '../packages/core/src/generator.js';
@@ -78,8 +81,49 @@ test('submitting score requires active consent', () => {
 
   assert.throws(
     () => submitLeaderboardScore({ session, alias: 'AliceMath', store, consent: { enabled: false } }),
-    LeaderboardUnavailableError
+    err => {
+      assert.ok(err instanceof LeaderboardUnavailableError);
+      assert.equal(err.reason, 'consent-required');
+      assert.doesNotMatch(err.message, /\bglobal\b/i);
+      assert.match(err.message, /this device/);
+      return true;
+    }
   );
+});
+
+test('services and community modules do not call the network', () => {
+  const root = resolve(new URL('..', import.meta.url).pathname);
+  const banned = /\b(fetch|XMLHttpRequest|WebSocket|sendBeacon)\b/;
+  const hits = [];
+  const walk = dir => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (banned.test(readFileSync(path, 'utf8'))) hits.push(path.slice(root.length + 1));
+    }
+  };
+  walk(resolve(root, 'packages/services/src'));
+  walk(resolve(root, 'packages/community/src'));
+  assert.deepEqual(hits, []);
+});
+
+test('a saved score is still there when the store is reopened', () => {
+  const backing = makeMockStorage();
+  const consent = { enabled: true, updatedAt: '2026-10-18T10:00:00Z' };
+  submitLeaderboardScore({
+    session: createLegitSession('persist-seed', 42),
+    alias: 'KeepMe',
+    store: new LeaderboardStore(backing),
+    consent,
+    now: '2026-10-18T12:00:00.000Z',
+  });
+  assert.equal(typeof backing.getItem(LEADERBOARD_STORE_KEY), 'string');
+  const rows = new LeaderboardStore(backing).getEntries();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].alias, 'KeepMe');
+  assert.equal(rows[0].score, 42);
+  new LeaderboardStore(backing).clear();
+  assert.equal(new LeaderboardStore(backing).getEntries().length, 0);
 });
 
 test('submits verified scores and maintains sorted rankings', () => {

@@ -29,6 +29,64 @@ test('index.html contains all M5 community UI containers and modals', () => {
   assert.ok(html.includes('id="challenge-modal-body"'), 'challenge-modal-body container');
 });
 
+test('F46 board copy is a personal list on this device', () => {
+  const main = readFileSync(resolve(root, 'apps/web/src/main.js'), 'utf8');
+  const html = readFileSync(resolve(root, 'apps/web/index.html'), 'utf8');
+  const boardStart = main.indexOf('const entriesRows');
+  const boardEnd = main.indexOf("$('#lb-clear-btn')");
+  assert.ok(boardStart > 0 && boardEnd > boardStart, 'leaderboard markup and save handler should exist');
+  const board = main.slice(boardStart, boardEnd);
+  assert.match(board, /id="lb-consent-toggle"/);
+  assert.match(board, /never leave this browser/);
+  assert.doesNotMatch(board, /\bglobal\b/i);
+  assert.doesNotMatch(board, /\bverified\b/i);
+  assert.doesNotMatch(board, /↗/);
+  assert.doesNotMatch(board, /opt in/i);
+  const community = html.slice(html.indexOf('id="view-community"'), html.indexOf('id="view-quant"'));
+  assert.doesNotMatch(community, /\bglobal\b/i);
+  assert.doesNotMatch(community, /\bverified\b/i);
+  assert.match(community, /never leave/);
+});
+
+test('the community board uses one localStorage store for read, save, and clear', () => {
+  const main = readFileSync(resolve(root, 'apps/web/src/main.js'), 'utf8');
+  assert.match(main, /const deviceLeaderboard = new LeaderboardStore\(localStorage\)/);
+  assert.match(main, /deviceLeaderboard\.getEntries\(/);
+  assert.match(main, /store: deviceLeaderboard/);
+  assert.match(main, /deviceLeaderboard\.clear\(/);
+  assert.doesNotMatch(main, /defaultLeaderboardStore/);
+});
+
+test('F46 spec lists the local board and the missing server', () => {
+  const spec = JSON.parse(readFileSync(resolve(root, 'specs/features.json'), 'utf8'));
+  const f46 = spec.features.find(item => item.id === 'F46');
+  const text = f46.acceptance.join(' ');
+  assert.equal(f46.status, 'partial');
+  assert.match(text, /this browser/);
+  assert.match(text, /client-side replay/);
+  assert.match(text, /server/);
+  assert.match(text, /accounts/);
+  assert.match(text, /independent verification/);
+});
+
+test('threat model treats replay as client-side and duels.js as unreachable', () => {
+  const doc = readFileSync(resolve(root, 'docs/COMMUNITY_THREAT_MODEL.md'), 'utf8');
+  assert.match(doc, /same browser/);
+  assert.match(doc, /trust boundary/);
+  assert.match(doc, /server re-runs it/);
+  assert.match(doc, /duels\.js/);
+  assert.match(doc, /not imported by the app/);
+  assert.doesNotMatch(doc, /global leaderboards \(F46\)/);
+});
+
+test('README what-works names the local community features', () => {
+  const readme = readFileSync(resolve(root, 'README.md'), 'utf8');
+  const works = readme.split('## What is not finished')[0];
+  for (const id of ['F44', 'F45', 'F46', 'F47']) assert.match(works, new RegExp(id));
+  assert.match(works, /this browser/);
+  assert.match(works, /never leave the browser/);
+});
+
 test('main.js wires M5 community modules and event handlers', () => {
   const main = readFileSync(resolve(root, 'apps/web/src/main.js'), 'utf8');
 

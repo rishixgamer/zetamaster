@@ -5,7 +5,7 @@ import { verifyCoachExplanation } from '../../curriculum/src/coach.js';
  * and the deterministic verification gate — with the transport deliberately left uninstalled:
  *
  * - **No network in this build.** The app ships with zero remote service dependencies; the coach
- *   never calls `fetch`, stores no API keys, and `requestCoachExplanation` accepts only prose the
+ *   makes no network request, stores no API keys, and `requestCoachExplanation` accepts only prose the
  *   user themselves pasted from any tool they chose. Any real provider wiring is future work that
  *   must come with an explicit privacy review, its own consent step, and a data-minimal prompt
  *   (problem operands only — never scores, latency or telemetry).

@@ -38,7 +38,7 @@ import { evaluateBenchmarkRank, evaluatePracticeActivity, COMMUNITY_RANKS, getRa
 import { evaluateAchievements, ACHIEVEMENT_CATALOG } from '../../../packages/community/src/achievements.js';
 import { encodeChallenge, decodeChallenge, buildChallengeUrl, parseChallengeFromUrl } from '../../../packages/community/src/challenges.js';
 import { verifyBenchmarkSession } from '../../../packages/services/src/anti-cheat.js';
-import { submitLeaderboardScore, getLeaderboardRankings, readLeaderboardConsent, setLeaderboardConsent, sanitizeAlias, defaultLeaderboardStore, leaderboardCandidateSessions } from '../../../packages/services/src/leaderboard.js';
+import { submitLeaderboardScore, getLeaderboardRankings, readLeaderboardConsent, setLeaderboardConsent, sanitizeAlias, LeaderboardStore, leaderboardCandidateSessions } from '../../../packages/services/src/leaderboard.js';
 import { createQuantGenerator } from '../../../packages/quant/src/generator.js';
 import { renderQuantUI } from './quant-ui.js';
 import { renderReplayUI } from './replay-ui.js';
@@ -65,6 +65,8 @@ function setSessionFocus(state){
   document.body.classList.toggle('in-results',state==='results');
 }
 let sessions=[];
+// One board for this page. It reads and writes localStorage; the memory-only singleton does not.
+const deviceLeaderboard = new LeaderboardStore(localStorage);
 let skillReviews=[];   // persisted per-skill spaced-repetition records (F19)
 let dailyPlanRecords=[]; // persisted per-day plan completion (F34)
 let lastPlanSteps=null; // reconciled steps of the currently rendered plan (completion writes re-serialize them)
@@ -1375,7 +1377,7 @@ function renderCommunity() {
   const achEval = evaluateAchievements(sessions, { skillReviews });
   const consent = readLeaderboardConsent(localStorage);
   const currentAlias = localStorage.getItem('zetamaster-player-alias-v1') || '';
-  const leaderboardEntries = defaultLeaderboardStore.getEntries(20);
+  const leaderboardEntries = deviceLeaderboard.getEntries(20);
 
   const rank = rankEval.rank;
   const rankHtml = `
@@ -1482,30 +1484,30 @@ function renderCommunity() {
           <td><small class="muted">${new Date(e.verifiedAt).toLocaleDateString()}</small></td>
         </tr>
       `).join('')
-    : '<tr><td colspan="5" class="empty" style="text-align:center;padding:16px;">No verified scores submitted yet.</td></tr>';
+    : '<tr><td colspan="5" class="empty" style="text-align:center;padding:16px;">No scores saved on this device yet.</td></tr>';
 
   const leaderboardHtml = `
     <div class="panel">
       <div class="section-header">
         <div>
-          <div class="eyebrow">GLOBAL LEADERBOARDS · F46</div>
-          <h2 class="section-title">Verified Leaderboard</h2>
+          <div class="eyebrow">ON THIS DEVICE · F46</div>
+          <h2 class="section-title">Board on this device</h2>
         </div>
-        <span class="tag">${consent.enabled ? 'OPTED-IN' : 'OFFLINE'}</span>
+        <span class="tag">${consent.enabled ? 'SAVING ON' : 'SAVING OFF'}</span>
       </div>
       <div class="consent-banner">
         <label class="consent-toggle-row">
           <input type="checkbox" id="lb-consent-toggle" ${consentChecked}>
-          <span><strong>Opt in to Global Leaderboard</strong> (Disabled by default)</span>
+          <span><strong>Save scores on this device</strong> (off until you turn it on)</span>
         </label>
-        <p class="small muted" style="margin-top:6px;">When enabled, you can submit verified benchmark scores. Submissions are checked draw-for-draw against deterministic replay and human reaction bounds. No PII is collected.</p>
+        <p class="small muted" style="margin-top:6px;">This switch only allows a score to be saved here. Entries never leave this browser. A replay check in this browser confirms the run matches its own seed. Nobody else checks it.</p>
       </div>
       <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;">
         <label class="field inline" style="flex:1;min-width:180px;">
           <span>PLAYER ALIAS (NO PII)</span>
           <input type="text" id="lb-alias-input" value="${esc(currentAlias)}" placeholder="e.g. SpeedCalc99" maxlength="20">
         </label>
-        <button type="button" class="primary-btn" id="lb-submit-latest-btn" ${consent.enabled ? '' : 'disabled'}>Submit Latest Benchmark ↗</button>
+        <button type="button" class="primary-btn" id="lb-submit-latest-btn" ${consent.enabled ? '' : 'disabled'}>Save latest benchmark</button>
       </div>
       <div id="lb-status-msg" style="font-size:12px;margin-bottom:8px;"></div>
       <table class="leaderboard-table">
@@ -1515,7 +1517,7 @@ function renderCommunity() {
             <th>Player Alias</th>
             <th>Score</th>
             <th>Avg Latency</th>
-            <th>Verified Date</th>
+            <th>Saved</th>
           </tr>
         </thead>
         <tbody>
@@ -1657,10 +1659,11 @@ function renderCommunity() {
       const res = submitLeaderboardScore({
         session: latest,
         alias,
+        store: deviceLeaderboard,
         consent: readLeaderboardConsent(localStorage),
         now: new Date().toISOString(),
       });
-      statusMsg.innerHTML = `<span style="color:#6ee7b7">✓ Score ${res.entry.score} verified! Ranked #${res.rank} of ${res.totalEntries}.</span>`;
+      statusMsg.innerHTML = `<span style="color:#6ee7b7">Saved score ${res.entry.score}. Rank #${res.rank} of ${res.totalEntries} on this device.</span>`;
       renderCommunity();
     } catch (err) {
       statusMsg.innerHTML = `<span style="color:#fb8c78">Submission failed: ${esc(err.message)}</span>`;
@@ -1669,7 +1672,7 @@ function renderCommunity() {
 
   $('#lb-clear-btn')?.addEventListener('click', () => {
     if (confirm('Clear local leaderboard cache and forget stored alias?')) {
-      defaultLeaderboardStore.clear();
+      deviceLeaderboard.clear();
       localStorage.removeItem('zetamaster-player-alias-v1');
       renderCommunity();
     }

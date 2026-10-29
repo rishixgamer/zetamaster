@@ -2,19 +2,19 @@ import { verifyBenchmarkSession, createSessionEvidence } from './anti-cheat.js';
 import { repeatedBenchmarkSeedReport } from '../../core/src/seed-policy.js';
 
 /**
- * Global Leaderboard Subsystem (F46, Milestone M5).
+ * On-device score board (F46, Milestone M5). Partial.
  *
- * Implements opt-in, privacy-preserving, anti-cheat verified rankings.
+ * Scores stay in this browser. Nothing is sent anywhere.
  *
- * Architecture & Privacy Guarantees:
- * 1. Zero Telemetry Leakage by Default: Consent is OFF by default. No requests or score
- *    uploads ever occur without affirmative opt-in.
- * 2. Privacy & Pseudonyms: Players register using an alias/handle only. No emails,
- *    real names, or PII are accepted.
- * 3. Anti-Cheat Gate: Every score submission is verified draw-for-draw against the seeded PRNG,
- *    and checked for physiological latency bounds and bot cadences.
- * 4. Abuse & Rate Limits: Submissions are capped per player/token (max 5 per hour).
- * 5. Right to be Forgotten: Players can delete their submissions at any time.
+ * What exists:
+ * 1. A save switch that defaults to off. It only gates writing a score on this device.
+ * 2. Alias-only labels. Emails, URLs, and similar identifiers are rejected.
+ * 3. A client-side replay check in this same browser. A pass means the recorded run
+ *    matches its seed. Nobody else checks it.
+ * 4. An in-memory cap of 5 saves per hour. Reloading the page clears it.
+ * 5. The board and the stored alias can be cleared from this device.
+ *
+ * Missing: a server, accounts, and independent verification.
  */
 
 export const LEADERBOARD_CONSENT_KEY = 'zetamaster-leaderboard-consent-v1';
@@ -178,20 +178,20 @@ export class LeaderboardStore {
   }
 }
 
-/** Default singleton instance for app runtime */
+/** Memory-only singleton. The app keeps its own store on localStorage. */
 export const defaultLeaderboardStore = new LeaderboardStore();
 
 /**
- * Submits a verified benchmark score to the global leaderboard.
+ * Saves a benchmark score on the board stored in this browser.
  *
  * @param {object} params
  * @param {object} params.session - Completed SessionRecord
  * @param {string} params.alias - Player public pseudonym
  * @param {string} [params.token='anon-token'] - Anti-abuse client token
  * @param {object} [params.store=defaultLeaderboardStore] - Storage adapter
- * @param {object} [params.consent] - Consent record
+ * @param {object} [params.consent] - Save-switch record. enabled must be true.
  * @param {string} [params.now] - ISO timestamp
- * @returns {object} Submission confirmation
+ * @returns {object} Save confirmation. `verified` means the client-side replay passed.
  */
 export function submitLeaderboardScore({
   session,
@@ -204,7 +204,7 @@ export function submitLeaderboardScore({
   if (!isLeaderboardConsentOn(consent)) {
     throw new LeaderboardUnavailableError(
       'consent-required',
-      'Global leaderboard ranking requires explicit affirmative opt-in consent.'
+      'Saving a score on this device requires the on-device board switch to be on.'
     );
   }
 
@@ -218,12 +218,12 @@ export function submitLeaderboardScore({
     );
   }
 
-  // Anti-cheat verification
+  // Client-side replay in this browser. A pass means the record matches its seed.
   const verification = verifyBenchmarkSession(session);
   if (!verification.verified) {
     throw new LeaderboardUnavailableError(
       'verification-failed',
-      `Session failed anti-cheat verification: ${verification.violations.join(', ')}`,
+      `Session failed the on-device replay check: ${verification.violations.join(', ')}`,
       verification.violations
     );
   }
