@@ -1,6 +1,7 @@
 import { BENCHMARK_RULES, customRules } from '../../../packages/core/src/rulesets.js';
 import { createGenerator, makeQuestion } from '../../../packages/core/src/generator.js';
 import { ArithmeticSession } from '../../../packages/core/src/session.js';
+import { resolveLaunchSeed, repeatedBenchmarkSeedReport } from '../../../packages/core/src/seed-policy.js';
 import { sessionStats, operationSummary } from '../../../packages/analytics/src/stats.js';
 import { benchmarkProgress } from '../../../packages/analytics/src/progress.js';
 import { diagnose } from '../../../packages/analytics/src/diagnostics.js';
@@ -37,7 +38,7 @@ import { evaluateBenchmarkRank, evaluatePracticeActivity, COMMUNITY_RANKS, getRa
 import { evaluateAchievements, ACHIEVEMENT_CATALOG } from '../../../packages/community/src/achievements.js';
 import { encodeChallenge, decodeChallenge, buildChallengeUrl, parseChallengeFromUrl } from '../../../packages/community/src/challenges.js';
 import { verifyBenchmarkSession } from '../../../packages/services/src/anti-cheat.js';
-import { submitLeaderboardScore, getLeaderboardRankings, readLeaderboardConsent, setLeaderboardConsent, sanitizeAlias, defaultLeaderboardStore } from '../../../packages/services/src/leaderboard.js';
+import { submitLeaderboardScore, getLeaderboardRankings, readLeaderboardConsent, setLeaderboardConsent, sanitizeAlias, defaultLeaderboardStore, leaderboardCandidateSessions } from '../../../packages/services/src/leaderboard.js';
 import { createQuantGenerator } from '../../../packages/quant/src/generator.js';
 import { renderQuantUI } from './quant-ui.js';
 import { renderReplayUI } from './replay-ui.js';
@@ -404,6 +405,11 @@ function updateMode() {
   $('#mode-hint').textContent=hints[mode];
   $('#duration').disabled=['benchmark','sprint','endurance'].includes(mode);
   $('#duration').value={benchmark:'120',sprint:'30',endurance:'300'}[mode]||$('#duration').value;
+  const benchmarkMode=mode==='benchmark';
+  $('#seed').disabled=benchmarkMode;
+  if(benchmarkMode)$('#seed').value='';
+  $('#seed-note').hidden=!benchmarkMode;
+  $('#seed-note').textContent=benchmarkMode?'Benchmarks always draw a fresh random seed. A seed you choose is practice.':'';
   $$('#ops input').forEach(x=>x.disabled=!['custom','isolation'].includes(mode));
   // Custom operand ranges (F02): the four inverse-generation axes are editable in custom mode only.
   const ranges=$('#custom-ranges');
@@ -432,8 +438,11 @@ function startGame({ replay=null, drill=null, preset=null, provenance=null }={})
     // preset path below and are never rebuilt here.
     else if(mode==='drill')rules=drill.stage==='flash'?automaticityDrill(drill,60):patternDrill(drill,60,{tier:drill.tier});
   } catch(error){alert(error.message);return;}
-  currentSeed=(preset?.seed ?? $('#seed').value.trim()) || crypto.randomUUID();
-  if(preset?.seed)$('#seed').value=preset.seed; // probes are reproducible for their day; show that
+  // Benchmark draws ignore the field and any preset seed. A preset seed stays on the preset:
+  // copying it into the field made the next benchmark repeat the probe sequence.
+  const launchSeed=resolveLaunchSeed({mode,fieldSeed:$('#seed').value,presetSeed:preset?.seed??null,randomSeed:crypto.randomUUID()});
+  currentSeed=launchSeed.seed;
+  if(launchSeed.clearField)$('#seed').value='';
   if(replay) {
     let index=0;
     const items=replay.map(q=>makeQuestion(q.op,q.sourceLeft,q.sourceRight,++index));
@@ -459,7 +468,7 @@ function startGame({ replay=null, drill=null, preset=null, provenance=null }={})
   } else {
     activeGhostTrajectory=null;
   }
-  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,drill:drill?{op:drill.op,cell:drill.cell??drill.id??drill.key,label:drill.label,tier:drill.tier??DEFAULT_DRILL_TIER,stage:drill.stage}:null,provenance:currentProvenance});
+  currentSession=new ArithmeticSession({rules,generator,mode,seed:currentSeed,seedSource:launchSeed.seedSource,drill:drill?{op:drill.op,cell:drill.cell??drill.id??drill.key,label:drill.label,tier:drill.tier??DEFAULT_DRILL_TIER,stage:drill.stage}:null,provenance:currentProvenance});
   currentSession.start();
   $('#idle-layout').classList.add('hidden');$('#top-metrics').classList.add('hidden');$('#results').classList.add('hidden');$('#game').classList.remove('hidden');
   setSessionFocus('game'); // focused run presentation; restored by showIdle/finishGame paths
@@ -601,6 +610,8 @@ async function finishGame(endedEarly) {
   // The core marks manual or short runs as ineligible; the UI never upgrades a result to benchmark.
   const result=currentSession.finish({endedEarly});
   if(!result || lastResult===result)return;
+  // A preset seed is never written into the field. If one is sitting there, drop it when the run ends.
+  if(result.seedSource==='preset' && $('#seed').value===result.seed)$('#seed').value='';
   lastResult=result;
   // Comparison context comes from the PRE-save history: what the person could have known right
   // before this run. Purely informational presentation on the results panel.
@@ -719,6 +730,7 @@ function renderAnalytics(){
   const allEvents=sessions.flatMap(s=>s.events??[]), ops=operationSummary(allEvents), diagnostics=diagnose(sessions);
   const worst=diagnostics.weaknesses.filter(w=>w.kind==='operation' && w.count>=5).slice(0,2);
   const recent=sessions.slice(0,8);
+  const seedReport=repeatedBenchmarkSeedReport(sessions);
   const maxTime=Math.max(5000,...ops.map(x=>x.medianMs??0));
   $('#analytics-root').innerHTML=`
     <section class="panel" id="consistency-root" aria-labelledby="consistency-title"></section>
@@ -731,8 +743,8 @@ function renderAnalytics(){
     <div class="panel"><h2 class="section-title">Time by operation</h2><div class="breakdown">${ops.map(o=>`<div class="breakdown-row"><span>${opNames[o.op]}</span><div class="bar"><div style="width:${Math.max(0,(o.medianMs??0)/maxTime*100)}%"></div></div><span>${fmt(o.medianMs)} <span class="muted">(${o.count}${o.ci?` · CI ${fmt(o.ci.low)}–${fmt(o.ci.high)}`:''})</span></span></div>`).join('')}</div><p class="secondary">Median per correctly solved problem across all sessions, with sample count and a 95% CI of the median once there are 6 or more. Lower is faster. Practice sessions included.</p></div>
     <div class="analysis-grid"><div class="panel"><h2 class="section-title">Current bottlenecks</h2>${worst.length?worst.map(w=>`<p class="secondary"><strong>${opNames[w.key]}</strong> · ${fmt(w.rawMedianMs)} median · ${w.count} observations</p>`).join(''):'<p class="secondary">More solved questions needed before identifying reliable weaknesses.</p>'}<p class="small muted">Heuristic, sample-size-smoothed estimates; not a validated cognitive assessment.</p></div>
     <div class="panel"><h2 class="section-title">Slowest questions</h2>${allEvents.length?[...allEvents].sort((a,b)=>b.responseMs-a.responseMs).slice(0,5).map(q=>`<div class="history-row"><span>${esc(`${q.left} ${q.symbol} ${q.right} = ${q.answer}`)}</span><strong>${fmt(q.responseMs)}</strong><span>${esc(q.op)}</span></div>`).join(''):'<div class="empty">No solved questions yet.</div>'}<button type="button" class="secondary-btn" id="replay-slow" ${allEvents.length?'':'disabled'}>Replay slowest five →</button></div></div>
-    <div class="panel"><h2 class="section-title">Recent sessions</h2>${recent.length?recent.map(s=>`<div class="history-row"><span>${esc(new Date(s.startedAt).toLocaleString())} · ${esc(s.mode)}${s.benchmark?' · verified':''}</span><strong>${esc(s.score)}</strong><span>${s.benchmark?'Standard':'Practice'}</span></div>`).join(''):'<div class="empty">Your first session will appear here.</div>'}</div>
-    <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" accept="application/json" hidden></div><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
+    <div class="panel"><h2 class="section-title">Recent sessions</h2>${recent.length?recent.map(s=>{const excluded=seedReport.excluded.has(s);return `<div class="history-row"><span>${esc(new Date(s.startedAt).toLocaleString())} · ${esc(s.mode)}${s.benchmark?' · verified':''}${excluded?' · repeated seed':''}</span><strong>${esc(s.score)}</strong><span>${!s.benchmark?'Practice':excluded?'Excluded':'Standard'}</span></div>`;}).join(''):'<div class="empty">Your first session will appear here.</div>'}</div>
+    <div class="data-actions"><button type="button" id="export-json">Export complete JSON</button><button type="button" id="export-csv">Export session CSV</button><button type="button" id="import-json">Import JSON</button><button type="button" class="warning" id="clear-history">Delete local history</button><input type="file" id="import-file" accept="application/json" hidden></div><p class="small muted" id="seed-reuse-count">Repeated benchmark seeds excluded from scores: ${seedReport.excludedCount}. The earliest run on a seed still counts. Later runs stay in history and stay out of the median, personal best, 8-of-10 goal, progression, rank and leaderboard submission.</p><p class="small muted">Data stays on this device unless you export it. Browsers may clear local data under storage pressure.</p>`;
   renderConsistency();
   renderProgression();
   renderForecast();
@@ -1636,9 +1648,7 @@ function renderCommunity() {
         statusMsg.innerHTML = '<span style="color:#fb8c78">Please enter a player alias.</span>';
         return;
       }
-      const verifiedBenchmarks = sessions.filter(
-        s => s && s.benchmark === true && s.mode === 'benchmark' && s.elapsedMs >= 120000
-      );
+      const verifiedBenchmarks = leaderboardCandidateSessions(sessions);
       if (!verifiedBenchmarks.length) {
         statusMsg.innerHTML = '<span style="color:#fb8c78">No completed 120s benchmark found to submit.</span>';
         return;
@@ -1747,9 +1757,9 @@ function bind(){
   $('#finish').addEventListener('click',()=>finishGame(true));
   $('#again').addEventListener('click',()=>{
     showIdle();
-    // "Play again" re-launches the last launch vehicle verbatim (same rules, same seed, same drill,
-    // same provenance context). A benchmark or replay rebuild doesn't re-tag on its own: replays
-    // re-execute an old run, and a mode-picker benchmark launch never carries a treatment tag.
+    // "Play again" re-launches the last launch vehicle (same rules, same drill, same provenance).
+    // A practice preset keeps its seed. A benchmark draws a new random seed, so play-again cannot
+    // repeat the sequence that just counted. Replays re-execute an old run and stay untagged.
     if(lastLaunch)startGame(lastLaunch);
     else startGame();
   });

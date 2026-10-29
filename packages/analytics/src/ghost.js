@@ -6,6 +6,8 @@
  * a reference benchmark run without altering benchmark generation or timing.
  */
 
+import { repeatedBenchmarkSeedReport } from '../../core/src/seed-policy.js';
+
 export const DEFAULT_BENCHMARK_DURATION_MS = 120000;
 
 /**
@@ -114,8 +116,9 @@ export function compareGhostPace(currentScore, elapsedMs, trajectory) {
  * Select reference personal-best benchmark session from history.
  */
 export function selectPersonalBestBenchmark(sessions = []) {
+  const excluded = repeatedBenchmarkSeedReport(sessions).excluded;
   const eligible = sessions.filter(s =>
-    s && s.benchmark === true && Number.isFinite(s.score) && Array.isArray(s.events) && s.events.length > 0
+    s && s.benchmark === true && !excluded.has(s) && Number.isFinite(s.score) && Array.isArray(s.events) && s.events.length > 0
   );
   if (!eligible.length) return null;
 

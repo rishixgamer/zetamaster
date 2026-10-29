@@ -1,4 +1,5 @@
 import { verifyBenchmarkSession, createSessionEvidence } from './anti-cheat.js';
+import { repeatedBenchmarkSeedReport } from '../../core/src/seed-policy.js';
 
 /**
  * Global Leaderboard Subsystem (F46, Milestone M5).
@@ -65,6 +66,18 @@ export function setLeaderboardConsent(store, enabled, now) {
   const state = { enabled, updatedAt: now };
   store?.setItem?.(LEADERBOARD_CONSENT_KEY, JSON.stringify(state));
   return state;
+}
+
+/**
+ * Benchmarks that may be submitted. Later runs on a repeated seed are left out.
+ * Array order is preserved so the caller can keep its own "latest" pick.
+ */
+export function leaderboardCandidateSessions(sessions) {
+  if (!Array.isArray(sessions)) return [];
+  const excluded = repeatedBenchmarkSeedReport(sessions).excluded;
+  return sessions.filter(s =>
+    s && s.benchmark === true && s.mode === 'benchmark' && s.elapsedMs >= 120000 && !excluded.has(s)
+  );
 }
 
 /**

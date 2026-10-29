@@ -1,4 +1,4 @@
-import { sanitizeImportedSession, sanitizeImportedSkillReview, sanitizeImportedDailyPlan } from './sanitize.js';
+import { sanitizeImportedSession, sanitizeImportedSkillReview, sanitizeImportedDailyPlan, flagRepeatedBenchmarkSeeds } from './sanitize.js';
 import { skillReviewRecord } from '../../training/src/scheduler.js';
 const DATABASE='zetamaster-v1';
 const FALLBACK_KEY='zetamaster-sessions-v1';
@@ -51,13 +51,14 @@ export async function deleteAllSessions() {
 export async function importSessions(records) {
   if(!Array.isArray(records))throw new Error('Import must be an array');
   if(records.length>10000)throw new Error('Import exceeds 10,000 sessions');
-  let count=0;
+  const accepted=[];
   for(const raw of records){
     const s=sanitizeImportedSession(raw);
-    if(!s)continue;
-    await saveSession(s); count++;
+    if(s)accepted.push(s);
   }
-  return count;
+  const flagged=flagRepeatedBenchmarkSeeds(accepted);
+  for(const s of flagged) await saveSession(s);
+  return flagged.length;
 }
 
 // Per-skill spaced-repetition records (F19): same discipline as sessions — IndexedDB first, capped

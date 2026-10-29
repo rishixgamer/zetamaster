@@ -64,6 +64,10 @@ export function verifyBenchmarkSession(session, {
   if (session.benchmark !== true || session.mode !== 'benchmark') {
     violations.push('NOT_A_BENCHMARK');
   }
+  // A typed or preset seed is practice, even if a forged record claims benchmark.
+  if (session.seedSource === 'user' || session.seedSource === 'preset') {
+    violations.push('CHOSEN_SEED');
+  }
 
   if (typeof session.elapsedMs !== 'number' || session.elapsedMs < 120000) {
     violations.push('INCOMPLETE_DURATION');

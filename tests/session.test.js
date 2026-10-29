@@ -40,3 +40,25 @@ test('custom score never counts as benchmark even with default ranges',()=>{
   const {session,move}=fakeSession(customRules());session.start();move(120000);
   assert.equal(session.finish().benchmark,false);
 });
+test('a chosen seed is practice even with benchmark rules and a full duration',()=>{
+  const finish=(seedSource)=>{
+    let t=0;
+    const session=new ArithmeticSession({rules:BENCHMARK_RULES,clock:()=>t,wallClock:()=>new Date(0).toISOString(),generator:()=>makeQuestion('add',2,3,1),mode:'benchmark',seed:'abc',seedSource});
+    session.start();t+=120000;
+    return session.finish();
+  };
+  for(const seedSource of ['user','preset','typed']){
+    const result=finish(seedSource);
+    assert.equal(result.benchmark,false,seedSource);
+    assert.equal(result.elapsedMs,120000);
+    assert.equal(result.mode,'benchmark');
+    assert.equal(result.rules,BENCHMARK_RULES);
+  }
+  const random=finish('random');
+  assert.equal(random.benchmark,true);
+  assert.equal(random.seedSource,'random');
+  const {session,move}=fakeSession();session.start();move(120000);
+  const legacy=session.finish();
+  assert.equal(legacy.benchmark,true);
+  assert.equal('seedSource' in legacy,false);
+});

@@ -1,4 +1,5 @@
 import { median, percentile, medianCI } from './stats.js';
+import { repeatedBenchmarkSeedReport } from '../../core/src/seed-policy.js';
 
 /**
  * Consistency metrics over verified standard benchmarks only (F43/F15). Definitions: docs/CONSISTENCY.md.
@@ -8,9 +9,13 @@ export const GOAL = Object.freeze({ target: 70, need: 8, window: 10 });
 export const MIN_BAND_RUNS = 3;
 export const MIN_TREND_RUNS = 6;
 
-/** Verified benchmark runs only, oldest first. Practice, drills, imports flagged non-benchmark never appear. */
+/**
+ * Verified benchmark runs only, oldest first. Practice, drills, imports flagged non-benchmark,
+ * and later runs on a repeated non-empty seed never appear. The earliest run on that seed stays.
+ */
 export function benchmarkSeries(sessions) {
-  return sessions.filter(s => s.benchmark === true && Number.isFinite(s.score))
+  const excluded = repeatedBenchmarkSeedReport(sessions).excluded;
+  return sessions.filter(s => s.benchmark === true && Number.isFinite(s.score) && !excluded.has(s))
     .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
     .map((s, i) => ({ run: i + 1, at: s.startedAt, score: s.score }));
 }

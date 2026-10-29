@@ -47,6 +47,16 @@ test('genuine simulated benchmark session passes anti-cheat verification', () =>
   assert.ok(res.details.stdDevMs > 10);
 });
 
+test('a chosen seed cannot verify as a benchmark', () => {
+  for (const seedSource of ['user', 'preset']) {
+    const res = verifyBenchmarkSession({ ...createLegitSession('fair-play-seed', 35), seedSource });
+    assert.equal(res.verified, false, seedSource);
+    assert.ok(res.violations.includes('CHOSEN_SEED'));
+  }
+  const random = verifyBenchmarkSession({ ...createLegitSession('fair-play-seed', 35), seedSource: 'random' });
+  assert.equal(random.verified, true);
+});
+
 test('rejects non-benchmark and custom practice sessions', () => {
   const custom = { ...createLegitSession(), mode: 'custom', benchmark: false };
   const res = verifyBenchmarkSession(custom);

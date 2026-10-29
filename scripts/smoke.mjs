@@ -232,7 +232,7 @@ const entrySettingsState = () => ({
 const dumpSessions = async () => {
   const db = await import('/packages/storage/src/db.js');
   const [sessions, reviews] = await Promise.all([db.listSessions(), db.listSkillReviews()]);
-  return { count: sessions.length, reviews: reviews.length, sessions: sessions.map(s => ({ mode: s.mode, benchmark: s.benchmark, score: s.score, endedEarly: s.endedEarly, elapsedMs: s.elapsedMs, seed: s.seed, eventCount: (s.events ?? []).length, rulesId: s.rules?.id, tagsOk: (s.events ?? []).every(e => Array.isArray(e.tags)), drillStage: s.drill?.stage ?? null, drillCell: s.drill?.cell ?? null, provenance: s.provenance ? { surface: s.provenance.surface, policyId: s.provenance.policyId ?? null, cellId: s.provenance.cellId ?? null, stage: s.provenance.stage ?? null } : null })) };
+  return { count: sessions.length, reviews: reviews.length, sessions: sessions.map(s => ({ mode: s.mode, benchmark: s.benchmark, score: s.score, endedEarly: s.endedEarly, elapsedMs: s.elapsedMs, seed: s.seed, seedSource: s.seedSource ?? null, eventCount: (s.events ?? []).length, rulesId: s.rules?.id, tagsOk: (s.events ?? []).every(e => Array.isArray(e.tags)), drillStage: s.drill?.stage ?? null, drillCell: s.drill?.cell ?? null, provenance: s.provenance ? { surface: s.provenance.surface, policyId: s.provenance.policyId ?? null, cellId: s.provenance.cellId ?? null, stage: s.provenance.stage ?? null } : null })) };
 };
 const academyState = () => {
   const opened = document.querySelector('[data-academy-open]');
@@ -538,9 +538,17 @@ async function run(font) {
       return q.firstTitle;
     });
 
-    await step('F43: seeded 120s standard benchmark completes and stores benchmark:true (real time)', async () => {
+    await step('F43: 120s standard benchmark draws a fresh seed and stores benchmark:true (real time)', async () => {
       await ev(cdp, setNav, 'train');
       await ev(cdp, setMode, 'benchmark');
+      const seedUi = await ev(cdp, () => ({
+        disabled: document.querySelector('#seed').disabled,
+        value: document.querySelector('#seed').value,
+        note: document.querySelector('#seed-note').textContent,
+      }));
+      assert(seedUi.disabled === true, 'seed field stays disabled in benchmark mode: ' + JSON.stringify(seedUi));
+      assert(seedUi.value === '', 'benchmark mode clears the seed field: ' + JSON.stringify(seedUi));
+      assert(/fresh random seed/.test(seedUi.note), 'seed note: ' + seedUi.note);
       await ev(cdp, setField, '#seed', 'smoke-seed-42');
       await ev(cdp, click, '#start');
       await waitUntil(cdp, gameVisible, { label: 'benchmark game' });
@@ -562,7 +570,9 @@ async function run(font) {
       assert(b.rulesId === 'zetamac-default-v1', 'rules id: ' + b.rulesId);
       assert(b.elapsedMs >= 119000, 'full duration required, elapsed ' + b.elapsedMs);
       assert(b.endedEarly === false, 'not ended early');
-      assert(b.seed === 'smoke-seed-42', 'seed recorded: ' + b.seed);
+      assert(b.seed !== 'smoke-seed-42', 'typed seed must not be stored: ' + b.seed);
+      assert(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(b.seed), 'stored seed should be a UUID: ' + b.seed);
+      assert(b.seedSource === 'random', 'seedSource: ' + b.seedSource);
       return `score ${res.score}, elapsed ${b.elapsedMs}ms, seed ${b.seed}`;
     });
 

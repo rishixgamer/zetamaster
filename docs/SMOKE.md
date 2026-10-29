@@ -43,7 +43,7 @@ buttons, input events) — nothing calls the app's internals directly:
 | F26 | Academy rehearsal completes the pinned `68 + 50 = 118 = 115` card example incl. wrong-answer retry; drill hand-off runs as practice; transfer draw shows its seed |
 | F27/F29 | strategy duel panel renders; coach verifier consent defaults OFF |
 | M6 | Quant view renders its panels after the `$` fix |
-| F43 | a seeded **full 120-second, real-time standard run** stores `benchmark: true` with `zetamac-default-v1` rules, full elapsed time, and the given seed |
+| F43 | a **full 120-second, real-time standard run** stores `benchmark: true` with `zetamac-default-v1` rules and full elapsed time. The seed field is disabled; a typed seed is ignored and the stored seed is a fresh UUID (`seedSource: random`) |
 | isolation | across every stored session, `benchmark === true` iff it is a complete standard run — practice is never a score |
 | F19 | interrupted drill records no spaced-review entry |
 | cleanup | delete-local-history empties the stores |

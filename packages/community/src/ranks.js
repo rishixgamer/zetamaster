@@ -108,16 +108,15 @@ export function getRankForScore(score) {
 }
 
 /**
- * Filter sessions to only genuine verified 120s benchmarks.
- * Excludes custom, practice, drill, sprint, aborted, or early-finished sessions.
+ * Stored verified benchmarks, oldest first. Practice and non-finite scores stay out.
+ * A repeated seed stays in this list: achievements read it. Rank does not — see
+ * `evaluateBenchmarkRank`, which uses the score series and drops later copies.
  */
 export function filterVerifiedBenchmarks(sessions) {
   if (!Array.isArray(sessions)) return [];
-  return benchmarkSeries(sessions).map(b => ({
-    run: b.run,
-    score: b.score,
-    at: b.at,
-  }));
+  return sessions.filter(s => s.benchmark === true && Number.isFinite(s.score))
+    .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
+    .map((s, i) => ({ run: i + 1, score: s.score, at: s.startedAt }));
 }
 
 /**
@@ -152,7 +151,8 @@ export function evaluatePracticeActivity(sessions) {
  * @returns {object} Rank evaluation result
  */
 export function evaluateBenchmarkRank(sessions, { window = DEFAULT_RANK_WINDOW } = {}) {
-  const verified = filterVerifiedBenchmarks(sessions);
+  // Score series, not the achievement list: a later run on the same seed does not move rank.
+  const verified = Array.isArray(sessions) ? benchmarkSeries(sessions) : [];
   const verifiedCount = verified.length;
 
   if (verifiedCount < MIN_VERIFIED_BENCHMARKS) {
