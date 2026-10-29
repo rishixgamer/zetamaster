@@ -43,6 +43,7 @@ buttons, input events) — nothing calls the app's internals directly:
 | F26 | Academy rehearsal completes the pinned `68 + 50 = 118 = 115` card example incl. wrong-answer retry; drill hand-off runs as practice; transfer draw shows its seed |
 | F27/F29 | strategy duel panel renders; coach verifier consent defaults OFF |
 | F46 | Community view renders; the on-device board's save switch defaults off, turning it on enables save, the view does not say Global, and a stored row is still there after reload |
+| F47 | A benchmark-shaped challenge link says the checksum catches accidental corruption and does not stop a deliberate edit. Accepting it starts `CUSTOM PRACTICE`, not a benchmark |
 | M6 | Quant view renders its panels after the `$` fix |
 | F43 | a **full 120-second, real-time standard run** stores `benchmark: true` with `zetamac-default-v1` rules and full elapsed time. The seed field is disabled; a typed seed is ignored and the stored seed is a fresh UUID (`seedSource: random`) |
 | isolation | across every stored session, `benchmark === true` iff it is a complete standard run — practice is never a score |

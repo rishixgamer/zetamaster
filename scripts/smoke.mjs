@@ -28,6 +28,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
+import { encodeChallenge } from '../packages/community/src/challenges.js';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/[/\\]+$/, '');
 const CHROME = process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -396,6 +397,30 @@ async function run(font) {
       assert(/\b42\b/.test(saved), 'saved score missing after reload: ' + saved.slice(0, 200));
       await ev(cdp, setNav, 'train');
       return 'switch defaults off; SmokeBoard 42 survived reload';
+    });
+
+    await step('F47: a benchmark-shaped challenge link starts as practice', async () => {
+      const token = encodeChallenge({
+        seed: 'smoke-benchmark-shaped',
+        durationSeconds: 120,
+        enabled: ['add', 'sub', 'mul', 'div'],
+      });
+      // A hash-only navigation stays on the same document. The query forces a reload
+      // so the boot path reads the link the way a pasted challenge URL does.
+      await goto(cdp, `${url}?challenge=1#challenge=${token}`);
+      await ev(cdp, installTraps);
+      await waitUntil(cdp, () => document.querySelector('#challenge-modal')?.open === true && !!document.querySelector('#ch-modal-accept'), { label: 'challenge modal' });
+      const copy = await ev(cdp, () => document.querySelector('#view-community')?.innerText ?? '');
+      assert(/accidental corruption/.test(copy), 'challenge copy should name accidental corruption: ' + copy.slice(0, 500));
+      assert(/does not stop a deliberate edit/.test(copy), 'challenge copy should say a deliberate edit is not stopped');
+      assert(!/tamper-proof/i.test(copy), 'community view still says tamper-proof');
+      await ev(cdp, click, '#ch-modal-accept');
+      await waitUntil(cdp, gameVisible, { label: 'challenge session' });
+      const live = await ev(cdp, gameState);
+      assert(live.mode === 'CUSTOM PRACTICE', 'challenge launch label: ' + live.mode);
+      await goto(cdp, url);
+      await ev(cdp, installTraps);
+      return 'modal accepted as CUSTOM PRACTICE; session not saved';
     });
 
     await step('F02: custom mode opens the range panel; progress select serves the field', async () => {

@@ -42,7 +42,8 @@ Because ZetaMaster is offline-first and runs in untrusted user browsers, the che
 - Challenge URLs (`ChallengeCodec`) encode **strictly** ruleset parameters and problem seeds:
   `{ v: 1, s: seed, d: duration, op: enabled, a: addition, m: multiplication, b: questionBudgetMs }`.
 - Any token or URL containing user names, emails, user IDs, timestamps, device fingerprints, or scores is actively rejected with `InvalidChallengeError`.
-- Includes a 32-bit FNV-1a checksum to detect link tampering or corruption (`ChallengeTamperedError`).
+- A 32-bit FNV-1a checksum (`ChallengeTamperedError`) catches accidental corruption, such as a truncated paste. It does not stop a deliberate edit: anyone can change the seed or rules and recompute the checksum.
+- Challenge runs always launch as practice (`mode: 'custom'`), even when the decoded rules are byte-identical to `BENCHMARK_RULES`. An editable link is acceptable because the run cannot count as a benchmark.
 
 ### C. Pseudonymous Player Handles
 - Leaderboard registrations accept an alias only (3–20 alphanumeric characters, underscores, hyphens).
